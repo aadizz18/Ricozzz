@@ -30,12 +30,73 @@ export default function DesignerDashboardPage() {
 
   useEffect(() => {
     const designers = getDesigners();
-    // Default to Alex Morgan for designer studio view
+    // Default to initial designer for preview
     const current = designers[0];
     setDesigner(current);
     setProjects(getProjects());
     const convs = getConversations();
     setUnreadMsgCount(convs.reduce((acc, c) => acc + (c.unreadCount || 0), 0));
+
+    // 1. Fetch real authenticated talent profile from PostgreSQL
+    fetch("/api/user/profile")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && data?.profile) {
+          const p = data.profile;
+          const tp = p.talentProfile;
+          setDesigner({
+            id: p.id,
+            name: p.fullName || "Creative Director",
+            avatar: p.fullName ? p.fullName.slice(0, 2).toUpperCase() : "CD",
+            initials: p.fullName ? p.fullName.slice(0, 2).toUpperCase() : "CD",
+            role: "Creative Director",
+            title: tp?.headline || "Creative Director & Brand Specialist",
+            bio: tp?.bio || "Senior brand architect and creative director.",
+            location: tp?.location || "Global / Remote",
+            dayRate: tp?.hourly_rate || "$1,100/day",
+            rating: 4.9,
+            completedProjectsCount: 24,
+            matchPercentage: 96,
+            skills: Array.isArray(tp?.skills) ? tp.skills : ["Brand Strategy", "Visual Identity"],
+            specializations: ["Brand Architecture"],
+            industries: ["Technology"],
+            styles: ["Minimal"],
+            budgetTier: "$$$$",
+            availability: "Available now",
+            featured: true,
+            verified: p.isVerified,
+            yearsExperience: tp?.years_experience || 8,
+            previousClients: ["Vantage", "Kite"],
+            experience: [],
+            portfolio: [],
+          });
+        }
+      })
+      .catch(() => {});
+
+    // 2. Fetch real projects from PostgreSQL
+    fetch("/api/user/projects")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && Array.isArray(data.projects) && data.projects.length > 0) {
+          const mapped: Project[] = data.projects.map((pr: any) => ({
+            id: pr.id,
+            title: pr.title,
+            companyId: pr.company_user_id || "comp-user",
+            companyName: pr.company_name,
+            industry: pr.industry,
+            status: pr.status,
+            timeline: pr.timeline,
+            budgetRange: pr.budget_range,
+            budgetTier: pr.budget_tier,
+            rebrandingGoals: pr.rebranding_goals || [],
+            requiredServices: pr.required_services || [],
+            createdAt: pr.created_at,
+          }));
+          setProjects(mapped);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   if (!designer) return null;

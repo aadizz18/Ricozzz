@@ -74,6 +74,44 @@ export async function GET(req: NextRequest) {
     const totalTickets = Number(totalTicketsRow?.count || 0);
     const resolvedRate = totalTickets > 0 ? Math.round((resolvedTickets / totalTickets) * 100) : 100;
 
+    // 4b. Platform Public User & Enquiry Metrics (from user_profiles & website_enquiries)
+    let totalUsers = 0;
+    let activeUsers = 0;
+    let suspendedUsers = 0;
+    let deactivatedUsers = 0;
+    let talentUsers = 0;
+    let companyUsers = 0;
+    let totalEnquiries = 0;
+    let newEnquiries = 0;
+
+    try {
+      const totalUsersRow = (await db.prepare("SELECT count(*) as count FROM user_profiles").get()) as { count: string | number } | undefined;
+      totalUsers = Number(totalUsersRow?.count || 0);
+
+      const activeUsersRow = (await db.prepare("SELECT count(*) as count FROM user_profiles WHERE status = 'active'").get()) as { count: string | number } | undefined;
+      activeUsers = Number(activeUsersRow?.count || 0);
+
+      const suspendedUsersRow = (await db.prepare("SELECT count(*) as count FROM user_profiles WHERE status = 'suspended'").get()) as { count: string | number } | undefined;
+      suspendedUsers = Number(suspendedUsersRow?.count || 0);
+
+      const deactivatedUsersRow = (await db.prepare("SELECT count(*) as count FROM user_profiles WHERE status = 'deactivated'").get()) as { count: string | number } | undefined;
+      deactivatedUsers = Number(deactivatedUsersRow?.count || 0);
+
+      const talentUsersRow = (await db.prepare("SELECT count(*) as count FROM user_profiles WHERE account_type = 'talent'").get()) as { count: string | number } | undefined;
+      talentUsers = Number(talentUsersRow?.count || 0);
+
+      const companyUsersRow = (await db.prepare("SELECT count(*) as count FROM user_profiles WHERE account_type = 'company'").get()) as { count: string | number } | undefined;
+      companyUsers = Number(companyUsersRow?.count || 0);
+
+      const totalEnquiriesRow = (await db.prepare("SELECT count(*) as count FROM website_enquiries").get()) as { count: string | number } | undefined;
+      totalEnquiries = Number(totalEnquiriesRow?.count || 0);
+
+      const newEnquiriesRow = (await db.prepare("SELECT count(*) as count FROM website_enquiries WHERE status = 'new'").get()) as { count: string | number } | undefined;
+      newEnquiries = Number(newEnquiriesRow?.count || 0);
+    } catch (metricErr) {
+      console.warn("Could not load user_profiles or website_enquiries metrics:", metricErr);
+    }
+
     // 5. Critical Issues & Overdue Tasks List
     const urgentTasks = await db.prepare(`
       SELECT 
@@ -139,6 +177,14 @@ export async function GET(req: NextRequest) {
       criticalTickets,
       resolvedTickets,
       resolvedTicketsRate: resolvedRate,
+      totalUsers,
+      activeUsers,
+      suspendedUsers,
+      deactivatedUsers,
+      talentUsers,
+      companyUsers,
+      totalEnquiries,
+      newEnquiries,
     };
 
     return NextResponse.json({

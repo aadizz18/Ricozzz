@@ -254,6 +254,66 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
+      {/* 2b. PLATFORM COMMUNITY & CONCIERGE INQUIRIES METRICS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-[#0E1118] border border-white/10 rounded-2xl p-5 shadow-lg flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 rounded-xl bg-emerald-950/60 border border-emerald-800/40 text-emerald-400 flex items-center justify-center">
+              <Users className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider font-semibold block">
+                Platform User Community
+              </span>
+              <div className="flex items-baseline gap-2 mt-0.5">
+                <span className="text-2xl font-black text-white font-mono">{kpis.totalUsers || 0}</span>
+                <span className="text-xs text-slate-400">registered accounts</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 text-xs font-mono">
+            <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-emerald-400">
+              {kpis.talentUsers || 0} Talent
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-blue-400">
+              {kpis.companyUsers || 0} Companies
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-300">
+              {kpis.activeUsers || 0} Active
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-[#0E1118] border border-white/10 rounded-2xl p-5 shadow-lg flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 rounded-xl bg-amber-950/60 border border-amber-800/40 text-amber-400 flex items-center justify-center">
+              <FileCheck2 className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider font-semibold block">
+                Concierge Briefing Inquiries
+              </span>
+              <div className="flex items-baseline gap-2 mt-0.5">
+                <span className="text-2xl font-black text-white font-mono">{kpis.totalEnquiries || 0}</span>
+                <span className="text-xs text-slate-400">mandate submissions</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold ${kpis.newEnquiries > 0 ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" : "bg-white/5 text-slate-400"}`}>
+              {kpis.newEnquiries || 0} New Pending
+            </span>
+            <Link
+              href="/admin/website?tab=enquiries"
+              className="text-xs font-mono text-amber-400 hover:text-amber-300 flex items-center gap-1 transition-colors"
+            >
+              <span>Review</span>
+              <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+        </div>
+      </div>
+
       {/* 3. OPERATIONAL BOTTLENECKS & CRITICAL ISSUES */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column (7 cols): Overdue Tasks & Department Workloads */}

@@ -59,6 +59,58 @@ export default function CompanyDashboardPage() {
         }))
       );
     }
+
+    // 1. Fetch real authenticated profile from PostgreSQL
+    fetch("/api/user/profile")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && data?.profile) {
+          setUser({
+            id: data.profile.id,
+            name: data.profile.fullName || "Enterprise Client",
+            email: data.profile.email,
+            role: "company",
+            avatar: data.profile.fullName ? data.profile.fullName.slice(0, 2).toUpperCase() : "EC",
+            companyName: data.profile.companyProfile?.companyName || "Enterprise Workspace",
+            title: data.profile.companyProfile?.industry || "Enterprise Client",
+          });
+        }
+      })
+      .catch(() => {});
+
+    // 2. Fetch real projects from PostgreSQL
+    fetch("/api/user/projects")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && Array.isArray(data.projects) && data.projects.length > 0) {
+          const mapped: Project[] = data.projects.map((p: any) => ({
+            id: p.id,
+            title: p.title,
+            companyId: p.company_user_id || "comp-user",
+            companyName: p.company_name,
+            industry: p.industry,
+            status: p.status,
+            timeline: p.timeline,
+            budgetRange: p.budget_range,
+            budgetTier: p.budget_tier,
+            rebrandingGoals: p.rebranding_goals || [],
+            requiredServices: p.required_services || [],
+            createdAt: p.created_at,
+          }));
+          setProjects(mapped);
+        }
+      })
+      .catch(() => {});
+
+    // 3. Fetch real shortlist count from PostgreSQL
+    fetch("/api/user/shortlist")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && Array.isArray(data.shortlistIds)) {
+          setShortlistCount(data.shortlistIds.length);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const activeProject = projects[0];

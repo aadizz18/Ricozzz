@@ -38,6 +38,28 @@ export default function DesignerPortfolioPage() {
     if (list.length > 0) {
       setDesigner(list[0]);
     }
+
+    // Fetch real authenticated talent profile
+    fetch("/api/user/profile")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && data?.profile) {
+          const p = data.profile;
+          const tp = p.talentProfile;
+          setDesigner((prev) => ({
+            ...(prev || list[0] || ({} as Designer)),
+            id: p.id,
+            name: p.fullName || prev?.name || "Creative Director",
+            role: "Creative Director",
+            title: tp?.headline || prev?.title || "Creative Director & Brand Specialist",
+            bio: tp?.bio || prev?.bio || "",
+            location: tp?.location || prev?.location || "Global / Remote",
+            dayRate: tp?.hourly_rate || prev?.dayRate || "$1,100/day",
+            portfolio: prev?.portfolio || [],
+          }));
+        }
+      })
+      .catch(() => {});
   };
 
   useEffect(() => {

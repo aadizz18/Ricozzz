@@ -106,12 +106,12 @@ export default function CreateProjectPage() {
   const handleFinalSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const created = saveProject({
+    const projectPayload = {
       companyId: "comp-user",
       companyName,
       title,
       industry,
-      status: "Discovery",
+      status: "Discovery" as const,
       timeline,
       startDate,
       budgetRange,
@@ -122,6 +122,18 @@ export default function CreateProjectPage() {
       requiredServices,
       preferredStyles,
       availabilityRequirement,
+    };
+
+    // 1. Save to local storage cache for instant transition
+    const created = saveProject(projectPayload);
+
+    // 2. Persist to PostgreSQL backend API
+    fetch("/api/user/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(projectPayload),
+    }).catch((err) => {
+      console.warn("Could not sync project to backend API:", err);
     });
 
     router.push(`/dashboard/company/projects/${created.id}`);

@@ -28,6 +28,20 @@ export default function ShortlistPage() {
     const all = getDesigners();
     const filtered = all.filter((d) => ids.includes(d.id));
     setShortlistedDesigners(filtered);
+
+    // Sync from PostgreSQL backend API
+    fetch("/api/user/shortlist")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && Array.isArray(data.shortlistIds) && data.shortlistIds.length > 0) {
+          const combinedIds = Array.from(new Set([...ids, ...data.shortlistIds]));
+          const combinedFiltered = all.filter((d) => combinedIds.includes(d.id));
+          if (combinedFiltered.length > 0) {
+            setShortlistedDesigners(combinedFiltered);
+          }
+        }
+      })
+      .catch(() => {});
   };
 
   useEffect(() => {
@@ -38,6 +52,9 @@ export default function ShortlistPage() {
 
   const handleRemove = (designerId: string) => {
     removeFromShortlist(designerId);
+    fetch(`/api/user/shortlist?talentProfileId=${encodeURIComponent(designerId)}`, {
+      method: "DELETE",
+    }).catch(() => {});
   };
 
   const handleContact = (designer: Designer) => {

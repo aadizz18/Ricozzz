@@ -14,10 +14,28 @@ export const ShortlistDrawer: React.FC = () => {
 
   useEffect(() => {
     setShortlistIds(getShortlist());
+    // Sync from PostgreSQL backend API
+    fetch("/api/user/shortlist")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && Array.isArray(data.shortlistIds) && data.shortlistIds.length > 0) {
+          const merged = Array.from(new Set([...getShortlist(), ...data.shortlistIds]));
+          setShortlistIds(merged);
+        }
+      })
+      .catch(() => {});
+
     const handleUpdate = () => setShortlistIds(getShortlist());
     window.addEventListener("brandroom_shortlist_updated", handleUpdate);
     return () => window.removeEventListener("brandroom_shortlist_updated", handleUpdate);
   }, []);
+
+  const handleRemove = (id: string) => {
+    removeFromShortlist(id);
+    fetch(`/api/user/shortlist?talentProfileId=${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }).catch(() => {});
+  };
 
   const shortlistedTalent: TalentProfile[] = shortlistIds
     .map((id) => TALENT_PROFILES.find((p) => p.id === id))
@@ -114,7 +132,7 @@ export const ShortlistDrawer: React.FC = () => {
 
                     <button
                       type="button"
-                      onClick={() => removeFromShortlist(t.id)}
+                      onClick={() => handleRemove(t.id)}
                       className="p-2 text-[#9E8E87] hover:text-[#541719] hover:bg-[#541719]/10 rounded-full transition-colors shrink-0"
                       title="Remove from shortlist"
                     >

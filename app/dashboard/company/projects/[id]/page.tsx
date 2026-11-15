@@ -37,9 +37,10 @@ export default function ProjectDetailsPage() {
   useEffect(() => {
     if (projectId) {
       const p = getProjectById(projectId);
+      const designers = getDesigners();
+
       if (p) {
         setProject(p);
-        const designers = getDesigners();
         const results = rankDesignersForProject(p, designers);
         setRankedMatches(results);
 
@@ -49,6 +50,37 @@ export default function ProjectDetailsPage() {
         });
         setShortlistMap(initialMap);
       }
+
+      // Also query backend API for live updates
+      fetch(`/api/user/projects/${projectId}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.success && data?.project) {
+            const bp = data.project;
+            const mapped: Project = {
+              id: bp.id,
+              title: bp.title,
+              companyId: bp.company_user_id || "comp-user",
+              companyName: bp.company_name,
+              industry: bp.industry,
+              status: bp.status,
+              timeline: bp.timeline,
+              startDate: bp.start_date || "Within 2 weeks",
+              budgetRange: bp.budget_range,
+              budgetTier: bp.budget_tier,
+              rebrandingGoals: bp.rebranding_goals || [],
+              targetAudience: bp.target_audience || "",
+              brandPersonality: bp.brand_personality || [],
+              requiredServices: bp.required_services || [],
+              preferredStyles: bp.preferred_styles || [],
+              availabilityRequirement: bp.availability_requirement || "Immediate",
+              createdAt: bp.created_at,
+            };
+            setProject(mapped);
+            setRankedMatches(rankDesignersForProject(mapped, designers));
+          }
+        })
+        .catch(() => {});
     }
   }, [projectId]);
 

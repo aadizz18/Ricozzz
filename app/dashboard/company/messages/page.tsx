@@ -51,10 +51,19 @@ export default function MessagesPage() {
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputVal.trim() || !activeConvId) return;
+    const clean = inputVal.trim();
+    if (!clean || !activeConvId) return;
 
     const user = getCurrentUser();
-    sendMessage(activeConvId, inputVal.trim(), user?.name || "Alex Vance");
+    sendMessage(activeConvId, clean, user?.name || "Alex Vance");
+
+    // Dual-sync to backend PostgreSQL API
+    fetch(`/api/user/conversations/${activeConvId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: clean }),
+    }).catch(() => {});
+
     setInputVal("");
     setMessages(getMessages(activeConvId));
   };

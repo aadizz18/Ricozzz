@@ -49,9 +49,18 @@ export default function DesignerMessagesPage() {
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputVal.trim() || !activeConvId) return;
+    const clean = inputVal.trim();
+    if (!clean || !activeConvId) return;
 
-    sendMessage(activeConvId, inputVal.trim(), "Alex Morgan (Creative Director)");
+    sendMessage(activeConvId, clean, "Alex Morgan (Creative Director)");
+
+    // Dual-sync to backend PostgreSQL API
+    fetch(`/api/user/conversations/${activeConvId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: clean }),
+    }).catch(() => {});
+
     setInputVal("");
     setMessages(getMessages(activeConvId));
   };

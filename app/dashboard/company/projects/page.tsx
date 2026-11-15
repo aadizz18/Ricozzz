@@ -15,7 +15,38 @@ export default function CompanyProjectsListPage() {
   const [projects, setProjects] = useState<Project[]>([]);
 
   useEffect(() => {
+    // Initial local cache load
     setProjects(getProjects());
+
+    // Fetch from real PostgreSQL API
+    fetch("/api/user/projects")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && Array.isArray(data.projects) && data.projects.length > 0) {
+          const mapped: Project[] = data.projects.map((p: any) => ({
+            id: p.id,
+            title: p.title,
+            companyId: p.company_user_id || "comp-user",
+            companyName: p.company_name,
+            industry: p.industry,
+            status: p.status,
+            timeline: p.timeline,
+            startDate: p.start_date || "Within 2 weeks",
+            budgetRange: p.budget_range,
+            budgetTier: p.budget_tier,
+            rebrandingGoals: p.rebranding_goals || [],
+            targetAudience: p.target_audience || "",
+            brandPersonality: p.brand_personality || [],
+            requiredServices: p.required_services || [],
+            preferredStyles: p.preferred_styles || [],
+            availabilityRequirement: p.availability_requirement || "Immediate",
+            createdAt: p.created_at,
+          }));
+          setProjects(mapped);
+        }
+      })
+      .catch(() => {});
+
     const onUpdate = () => setProjects(getProjects());
     window.addEventListener("brandroom_projects_updated", onUpdate);
     return () => window.removeEventListener("brandroom_projects_updated", onUpdate);
