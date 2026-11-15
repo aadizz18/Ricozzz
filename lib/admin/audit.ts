@@ -11,22 +11,21 @@ export interface AuditLogParams {
   ipAddress?: string | null;
 }
 
-export function recordAuditLog(params: AuditLogParams): void {
+export async function recordAuditLog(params: AuditLogParams): Promise<void> {
   try {
     const db = getDb();
-    const id = `aud-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
-    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
 
-    const actorId = params.actor ? params.actor.id : null;
+    const actorId = params.actor && params.actor.id ? params.actor.id : null;
     const actorName = params.actor ? params.actor.fullName : "System";
     const actorRole = params.actor ? params.actor.role : "system";
 
     const stmt = db.prepare(`
       INSERT INTO audit_logs (id, actor_id, actor_name, actor_role, action, entity_type, entity_id, change_summary, ip_address, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     `);
 
-    stmt.run(
+    await stmt.run(
       id,
       actorId,
       actorName,
@@ -35,8 +34,7 @@ export function recordAuditLog(params: AuditLogParams): void {
       params.entityType,
       params.entityId,
       params.changeSummary,
-      params.ipAddress || "127.0.0.1",
-      now
+      params.ipAddress || "127.0.0.1"
     );
   } catch (error) {
     console.error("Failed to record audit log:", error);

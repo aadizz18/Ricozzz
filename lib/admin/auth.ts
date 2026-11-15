@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
-import { getDb, verifyPassword } from "./db";
+import { getDb } from "./db";
+import { getInsforgeClient, getInsforgeAdminClient } from "@/lib/insforge";
 import { AdminUser, AdminRole } from "./types";
 import { loadUserPermissions, loadUserDepartmentMemberships, hasPermission, PermissionContext } from "./permissions";
 import { verifyCsrfOrigin } from "./csrf";
@@ -35,37 +36,42 @@ export const SESSION_MAX_LIFETIME_HOURS = 24 * 7; // 7 days maximum session life
 export const SESSION_IDLE_TIMEOUT_MINUTES = 60; // 60 minutes idle timeout
 export const ACTIVITY_THROTTLE_MS = 5 * 60 * 1000; // 5-minute activity update interval
 
-export function createAdminSession(
+/**
+ * Creates an authoritative session in PostgreSQL `admin_sessions`.
+ * Token is stored as a SHA-256 hash.
+ */
+export async function createAdminSession(
   userId: string,
   ipAddress: string = "127.0.0.1",
   userAgent: string = "browser"
-): { token: string; expiresAt: string } {
+): Promise<{ token: string; expiresAt: string }> {
   const db = getDb();
   const token = crypto.randomBytes(32).toString("hex");
-  const now = new Date().toISOString();
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
   const expiresAt = new Date(Date.now() + SESSION_MAX_LIFETIME_HOURS * 3600 * 1000).toISOString();
-  const sessionId = `ses-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
 
-  const insert = db.prepare(`
-    INSERT INTO admin_sessions (id, user_id, session_token, expires_at, last_activity_at, ip_address, user_agent, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  insert.run(sessionId, userId, token, expiresAt, now, ipAddress, userAgent, now);
+  await db.prepare(`
+    INSERT INTO admin_sessions (id, user_id, token_hash, expires_at, last_activity_at, ip_address, user_agent, created_at)
+    VALUES (gen_random_uuid(), ?, ?, ?, NOW(), ?, ?, NOW())
+  `).run(userId, tokenHash, expiresAt, ipAddress, userAgent);
 
-  // Update user last login
-  db.prepare("UPDATE admin_users SET last_login_at = ? WHERE id = ?").run(now, userId);
+  // Update user last login in PostgreSQL
+  await db.prepare("UPDATE admin_users SET last_login_at = NOW() WHERE id = ?").run(userId);
 
   return { token, expiresAt };
 }
 
-export function validateAdminSession(token: string): AdminUser | null {
+/**
+ * Validates an active session token against PostgreSQL `admin_sessions` and `admin_users`.
+ */
+export async function validateAdminSession(token: string): Promise<AdminUser | null> {
   if (!token || typeof token !== "string" || token.length < 16) return null;
 
   try {
     const db = getDb();
-    const now = new Date().toISOString();
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
-    const row = db.prepare(`
+    const row = (await db.prepare(`
       SELECT 
         u.id, u.email, u.full_name, u.role, u.department_id, u.status, u.avatar, u.last_login_at, u.created_at,
         d.name as department_name,
@@ -73,8 +79,8 @@ export function validateAdminSession(token: string): AdminUser | null {
       FROM admin_sessions s
       JOIN admin_users u ON s.user_id = u.id
       LEFT JOIN departments d ON u.department_id = d.id
-      WHERE s.session_token = ? AND s.expires_at > ?
-    `).get(token, now) as Record<string, unknown> | undefined;
+      WHERE s.token_hash = ? AND s.expires_at > NOW()
+    `).get(tokenHash)) as Record<string, unknown> | null;
 
     if (!row) return null;
     if (row.status !== "active") return null;
@@ -86,15 +92,14 @@ export function validateAdminSession(token: string): AdminUser | null {
       const idleElapsedMinutes = (Date.now() - lastActivityTime) / (60 * 1000);
 
       if (idleElapsedMinutes > SESSION_IDLE_TIMEOUT_MINUTES) {
-        // Invalidate idle session
-        destroyAdminSession(token);
+        await destroyAdminSession(token);
         return null;
       }
 
-      // Throttle updating last_activity_at to avoid database write amplification
+      // Throttle updating last_activity_at
       if (Date.now() - lastActivityTime > ACTIVITY_THROTTLE_MS) {
         try {
-          db.prepare("UPDATE admin_sessions SET last_activity_at = ? WHERE session_token = ?").run(now, token);
+          await db.prepare("UPDATE admin_sessions SET last_activity_at = NOW() WHERE token_hash = ?").run(tokenHash);
         } catch {
           // Non-blocking write
         }
@@ -104,9 +109,9 @@ export function validateAdminSession(token: string): AdminUser | null {
     const userId = String(row.id);
     const roleSlug = String(row.role);
 
-    // Load granular permissions and active overrides from DB
-    const { permissions, overrides } = loadUserPermissions(userId, roleSlug);
-    const departmentMemberships = loadUserDepartmentMemberships(userId);
+    // Load granular permissions and active overrides from PostgreSQL
+    const { permissions, overrides } = await loadUserPermissions(userId, roleSlug);
+    const departmentMemberships = await loadUserDepartmentMemberships(userId);
 
     return {
       id: userId,
@@ -116,7 +121,7 @@ export function validateAdminSession(token: string): AdminUser | null {
       departmentId: row.department_id ? String(row.department_id) : null,
       departmentName: row.department_name ? String(row.department_name) : undefined,
       status: "active",
-      avatar: String(row.avatar),
+      avatar: String(row.avatar || ""),
       lastLoginAt: row.last_login_at ? String(row.last_login_at) : null,
       createdAt: String(row.created_at),
       permissions,
@@ -129,19 +134,20 @@ export function validateAdminSession(token: string): AdminUser | null {
   }
 }
 
-export function destroyAdminSession(token: string): void {
+export async function destroyAdminSession(token: string): Promise<void> {
   try {
     const db = getDb();
-    db.prepare("DELETE FROM admin_sessions WHERE session_token = ?").run(token);
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    await db.prepare("DELETE FROM admin_sessions WHERE token_hash = ?").run(tokenHash);
   } catch (err) {
     console.error("Error destroying admin session:", err);
   }
 }
 
-export function revokeSessionById(sessionId: string): boolean {
+export async function revokeSessionById(sessionId: string): Promise<boolean> {
   try {
     const db = getDb();
-    const result = db.prepare("DELETE FROM admin_sessions WHERE id = ?").run(sessionId);
+    const result = await db.prepare("DELETE FROM admin_sessions WHERE id = ?").run(sessionId);
     return Number(result.changes) > 0;
   } catch (err) {
     console.error("Error revoking session by id:", err);
@@ -149,10 +155,10 @@ export function revokeSessionById(sessionId: string): boolean {
   }
 }
 
-export function revokeAllUserSessions(userId: string): number {
+export async function revokeAllUserSessions(userId: string): Promise<number> {
   try {
     const db = getDb();
-    const result = db.prepare("DELETE FROM admin_sessions WHERE user_id = ?").run(userId);
+    const result = await db.prepare("DELETE FROM admin_sessions WHERE user_id = ?").run(userId);
     return Number(result.changes);
   } catch (err) {
     console.error("Error revoking all user sessions:", err);
@@ -166,7 +172,7 @@ export async function getCurrentAdminUser(): Promise<AdminUser | null> {
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME);
     if (!sessionCookie || !sessionCookie.value) return null;
-    return validateAdminSession(sessionCookie.value);
+    return await validateAdminSession(sessionCookie.value);
   } catch {
     return null;
   }
@@ -174,15 +180,25 @@ export async function getCurrentAdminUser(): Promise<AdminUser | null> {
 
 export const getCurrentAdmin = getCurrentAdminUser;
 
-export function getAdminUserFromRequest(req: NextRequest): AdminUser | null {
+export async function getAdminUserFromRequest(req: NextRequest): Promise<AdminUser | null> {
+  // Check cookie first
   const sessionCookie = req.cookies.get(SESSION_COOKIE_NAME);
-  if (!sessionCookie || !sessionCookie.value) return null;
-  return validateAdminSession(sessionCookie.value);
+  let token = sessionCookie?.value;
+
+  // Fallback to Bearer token in Authorization header
+  if (!token) {
+    const authHeader = req.headers.get("authorization");
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.substring(7).trim();
+    }
+  }
+
+  if (!token) return null;
+  return await validateAdminSession(token);
 }
 
 /**
  * Server-side Guard: Validates that the request has an active, authenticated admin user.
- * Automatically performs CSRF Origin verification for state-changing HTTP methods.
  */
 export async function requireAdmin(
   req?: NextRequest
@@ -199,7 +215,7 @@ export async function requireAdmin(
     }
   }
 
-  const user = req ? getAdminUserFromRequest(req) : await getCurrentAdminUser();
+  const user = req ? await getAdminUserFromRequest(req) : await getCurrentAdminUser();
   if (!user) {
     return {
       errorResponse: NextResponse.json(
@@ -257,12 +273,10 @@ export async function requireDepartmentAccess(
   }
 
   const { user } = authResult;
-  // Global roles have cross-department oversight
   if (["super_admin", "exec_director", "coo", "auditor"].includes(user.role)) {
     return { user };
   }
 
-  // Check primary department or department membership
   const isPrimary = user.departmentId === departmentId;
   const isMember = user.departmentMemberships?.some((m) => m.departmentId === departmentId);
 
@@ -302,33 +316,132 @@ export async function requireSuperAdmin(
   return { user };
 }
 
-export function authenticateAdminCredentials(email: string, password: string): AdminUser | null {
-  if (!email || !password) return null;
+/**
+ * Authoritative Server-side Authentication & Bootstrap Handler.
+ * Integrates InsForge Auth with PostgreSQL `admin_users`.
+ */
+export async function authenticateAdminCredentials(
+  email: string,
+  password: string
+): Promise<{ user: AdminUser | null; error?: string }> {
+  if (!email || !password) {
+    return { user: null, error: "Email and password are required." };
+  }
+
   try {
     const db = getDb();
     const normalizedEmail = email.trim().toLowerCase();
 
-    const row = db.prepare(`
+    // 1. Check if ANY admin user exists in PostgreSQL admin_users
+    const countRow = (await db.prepare("SELECT count(*) as count FROM admin_users").get()) as { count: string | number } | null;
+    const totalAdmins = Number(countRow?.count || 0);
+
+    // --------------------------------------------------------------------------
+    // FIRST-ADMIN BOOTSTRAP PROCESS
+    // --------------------------------------------------------------------------
+    if (totalAdmins === 0) {
+      console.log(`[BOOTSTRAP] Initiating First-Admin Bootstrap for: ${normalizedEmail}`);
+
+      const adminClient = getInsforgeAdminClient();
+
+      // Check if user exists in auth.users
+      let authUserRow = (await db.prepare("SELECT id FROM auth.users WHERE LOWER(email) = ?").get(normalizedEmail)) as { id: string } | null;
+
+      if (!authUserRow) {
+        // Sign up user via InsForge Auth
+        const signupRes = await adminClient.auth.signUp({
+          email: normalizedEmail,
+          password,
+          name: "Owner / Super Admin",
+        });
+
+        if (signupRes.error) {
+          return { user: null, error: `Auth bootstrap failed: ${signupRes.error.message}` };
+        }
+
+        // Set email_verified = true in auth.users
+        await db.prepare("UPDATE auth.users SET email_verified = true WHERE LOWER(email) = ?").run(normalizedEmail);
+
+        authUserRow = (await db.prepare("SELECT id FROM auth.users WHERE LOWER(email) = ?").get(normalizedEmail)) as { id: string } | null;
+      } else {
+        // User already in auth.users, ensure email_verified = true
+        await db.prepare("UPDATE auth.users SET email_verified = true WHERE id = ?").run(authUserRow.id);
+      }
+
+      if (!authUserRow) {
+        return { user: null, error: "Failed to resolve identity record." };
+      }
+
+      // Find executive department
+      const execDept = (await db.prepare("SELECT id FROM departments WHERE slug = 'executive' LIMIT 1").get()) as { id: string } | null;
+      const deptId = execDept?.id || null;
+
+      // Insert first admin into public.admin_users as super_admin
+      await db.prepare(`
+        INSERT INTO admin_users (id, email, full_name, role, department_id, status, avatar, created_at, updated_at)
+        VALUES (?, ?, 'Owner / Super Admin', 'super_admin', ?, 'active', '', NOW(), NOW())
+        ON CONFLICT (id) DO UPDATE SET role = 'super_admin', status = 'active'
+      `).run(authUserRow.id, normalizedEmail, deptId);
+
+      const { permissions, overrides } = await loadUserPermissions(authUserRow.id, "super_admin");
+      const departmentMemberships = await loadUserDepartmentMemberships(authUserRow.id);
+
+      const user: AdminUser = {
+        id: authUserRow.id,
+        email: normalizedEmail,
+        fullName: "Owner / Super Admin",
+        role: "super_admin",
+        departmentId: deptId,
+        departmentName: "Executive Management",
+        status: "active",
+        avatar: "",
+        lastLoginAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        permissions,
+        permissionOverrides: overrides,
+        departmentMemberships,
+      };
+
+      return { user };
+    }
+
+    // --------------------------------------------------------------------------
+    // STANDARD ADMIN AUTHENTICATION
+    // --------------------------------------------------------------------------
+    const row = (await db.prepare(`
       SELECT 
-        u.id, u.email, u.password_hash, u.salt, u.full_name, u.role, u.department_id, u.status, u.avatar, u.last_login_at, u.created_at,
+        u.id, u.email, u.full_name, u.role, u.department_id, u.status, u.avatar, u.last_login_at, u.created_at,
         d.name as department_name
       FROM admin_users u
       LEFT JOIN departments d ON u.department_id = d.id
       WHERE LOWER(u.email) = ?
-    `).get(normalizedEmail) as Record<string, unknown> | undefined;
+    `).get(normalizedEmail)) as Record<string, unknown> | null;
 
-    if (!row) return null;
-    if (row.status !== "active") return null;
+    if (!row) {
+      return { user: null, error: "Access Denied: Account is not registered as an administrative user." };
+    }
 
-    const isValid = verifyPassword(password, String(row.password_hash), String(row.salt));
-    if (!isValid) return null;
+    if (row.status !== "active") {
+      return { user: null, error: "Account access suspended. Contact the system administrator." };
+    }
+
+    // Authenticate password with InsForge Auth
+    const client = getInsforgeClient();
+    const authResult = await client.auth.signInWithPassword({
+      email: normalizedEmail,
+      password,
+    });
+
+    if (authResult.error || !authResult.data?.user) {
+      return { user: null, error: "Invalid administrative credentials." };
+    }
 
     const userId = String(row.id);
     const roleSlug = String(row.role);
-    const { permissions, overrides } = loadUserPermissions(userId, roleSlug);
-    const departmentMemberships = loadUserDepartmentMemberships(userId);
+    const { permissions, overrides } = await loadUserPermissions(userId, roleSlug);
+    const departmentMemberships = await loadUserDepartmentMemberships(userId);
 
-    return {
+    const user: AdminUser = {
       id: userId,
       email: String(row.email),
       fullName: String(row.full_name),
@@ -336,15 +449,17 @@ export function authenticateAdminCredentials(email: string, password: string): A
       departmentId: row.department_id ? String(row.department_id) : null,
       departmentName: row.department_name ? String(row.department_name) : undefined,
       status: "active",
-      avatar: String(row.avatar),
+      avatar: String(row.avatar || ""),
       lastLoginAt: row.last_login_at ? String(row.last_login_at) : null,
       createdAt: String(row.created_at),
       permissions,
       permissionOverrides: overrides,
       departmentMemberships,
     };
-  } catch (err) {
+
+    return { user };
+  } catch (err: any) {
     console.error("Error authenticating admin credentials:", err);
-    return null;
+    return { user: null, error: err?.message || "Internal authentication error." };
   }
 }

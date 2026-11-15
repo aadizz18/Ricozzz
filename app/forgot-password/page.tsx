@@ -11,18 +11,48 @@ import { EditorialStar, ContourFlourish } from "@/components/ui/EditorialDecorat
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) return;
-    setSubmitted(true);
+    setError(null);
+
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      setError("Please provide your work email address.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: cleanEmail }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Could not process request. Please try again later.");
+        setLoading(false);
+        return;
+      }
+
+      setSubmitted(true);
+    } catch {
+      setError("Network error while connecting to recovery service.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground selection:bg-accent selection:text-[#FFF9F3]">
       <Navbar />
 
-      <main className="flex-1 flex items-center justify-center p-4 py-12 relative overflow-hidden">
+      <main className="flex-1 flex items-center justify-center p-4 py-16 relative overflow-hidden">
         <ContourFlourish className="absolute -top-16 -right-16 w-80 h-80 text-taupe/15 pointer-events-none" />
         <ContourFlourish className="absolute -bottom-16 -left-16 w-72 h-72 text-taupe/15 pointer-events-none rotate-180" />
 
@@ -35,12 +65,18 @@ export default function ForgotPasswordPage() {
             <h1 className="font-serif text-3xl sm:text-4xl font-normal tracking-tight text-espresso">
               Reset Your Password
             </h1>
-            <p className="text-xs text-muted max-w-xs mx-auto">
-              Enter your work email address and we&apos;ll send you instructions to reset your account password.
+            <p className="text-xs text-muted max-w-xs mx-auto font-sans">
+              Enter your work email address and we&apos;ll send you a 6-digit recovery code to reset your account password.
             </p>
           </div>
 
           <div className="bg-[#FFF9F3] border border-[#E6D8CF] rounded-3xl p-6 sm:p-8 space-y-6 shadow-xs">
+            {error && (
+              <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-mono">
+                {error}
+              </div>
+            )}
+
             {submitted ? (
               <div className="space-y-5 text-center py-4">
                 <div className="w-14 h-14 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center mx-auto text-accent">
@@ -51,16 +87,16 @@ export default function ForgotPasswordPage() {
                     Check your inbox
                   </h3>
                   <p className="text-xs text-muted leading-relaxed font-sans max-w-sm mx-auto">
-                    We sent a secure password reset link to <strong className="text-espresso font-mono">{email}</strong>.
+                    If an account is associated with <strong className="text-espresso font-mono">{email}</strong>, a 6-digit recovery code has been sent.
                   </p>
                 </div>
 
                 <div className="pt-3 flex flex-col gap-3">
                   <Link
                     href={`/reset-password?email=${encodeURIComponent(email)}`}
-                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-accent text-[#FFF9F3] text-xs font-semibold hover:bg-[#3E1012] transition-colors shadow-md"
+                    className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-accent text-[#FFF9F3] text-xs font-semibold hover:bg-[#3E1012] transition-colors shadow-md"
                   >
-                    <span>Proceed to Set New Password</span>
+                    <span>Enter Code & Set New Password &rarr;</span>
                   </Link>
                   <Link
                     href="/login"
@@ -91,18 +127,18 @@ export default function ForgotPasswordPage() {
                 </div>
 
                 <div className="pt-2">
-                  <Button type="submit" fullWidth size="lg">
-                    Send Password Reset Link
+                  <Button type="submit" fullWidth size="lg" disabled={loading}>
+                    {loading ? "Sending Recovery Code..." : "Send Password Reset Code"}
                   </Button>
                 </div>
 
                 <div className="text-center pt-4 border-t border-[#E6D8CF]">
                   <Link
                     href="/login"
-                    className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-espresso font-mono transition-colors"
+                    className="inline-flex items-center gap-1 text-xs text-muted hover:text-espresso font-mono transition-colors"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
-                    <span>Back to sign in</span>
+                    <span>Return to sign in</span>
                   </Link>
                 </div>
               </form>

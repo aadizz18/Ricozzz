@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   if ("errorResponse" in auth) return auth.errorResponse;
 
   try {
-    const roles = getAllRoles();
+    const roles = await getAllRoles();
     return NextResponse.json({ success: true, roles });
   } catch (error) {
     console.error("Roles GET error:", error);
@@ -30,7 +30,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const db = getDb();
-    const role = db.prepare("SELECT * FROM admin_roles WHERE id = ?").get(roleId) as Record<string, unknown> | undefined;
+    const role = (await db.prepare("SELECT * FROM admin_roles WHERE id = ?").get(roleId)) as Record<string, unknown> | undefined;
     if (!role) {
       return NextResponse.json({ success: false, error: "Role not found." }, { status: 404 });
     }
@@ -41,32 +41,24 @@ export async function PATCH(req: NextRequest) {
 
     const now = new Date().toISOString();
 
-    db.exec("BEGIN TRANSACTION;");
-    try {
-      // Remove existing permissions for this role
-      db.prepare("DELETE FROM admin_role_permissions WHERE role_id = ?").run(roleId);
+    // Remove existing permissions for this role
+    await db.prepare("DELETE FROM admin_role_permissions WHERE role_id = ?").run(roleId);
 
-      // Re-assign specified permissions
-      const insertStmt = db.prepare(`
-        INSERT INTO admin_role_permissions (id, role_id, permission_id, created_at)
-        SELECT ?, ?, id, ?
-        FROM admin_permissions
-        WHERE slug = ?
-      `);
+    // Re-assign specified permissions
+    const insertStmt = db.prepare(`
+      INSERT INTO admin_role_permissions (role_id, permission_id, created_at)
+      SELECT ?, id, ?
+      FROM admin_permissions
+      WHERE slug = ?
+    `);
 
-      for (const slug of permissionSlugs) {
-        const id = `rp-${role.slug}-${String(slug).replace(/[^a-z0-9]/g, "-")}`;
-        insertStmt.run(id, roleId, now, slug);
-      }
-
-      db.prepare("UPDATE admin_roles SET updated_at = ? WHERE id = ?").run(now, roleId);
-      db.exec("COMMIT;");
-    } catch (txErr) {
-      db.exec("ROLLBACK;");
-      throw txErr;
+    for (const slug of permissionSlugs) {
+      await insertStmt.run(roleId, now, slug);
     }
 
-    recordAuditLog({
+    await db.prepare("UPDATE admin_roles SET updated_at = NOW() WHERE id = ?").run(roleId);
+
+    await recordAuditLog({
       actor: auth.user,
       action: "ROLE_PERMISSIONS_UPDATE",
       entityType: "admin_role",

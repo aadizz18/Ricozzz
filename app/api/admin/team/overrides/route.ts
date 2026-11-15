@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const db = getDb();
-    const rows = db.prepare(`
+    const rows = (await db.prepare(`
       SELECT 
         up.id, up.admin_user_id, up.permission_id, up.effect, up.granted_by, up.reason, up.expires_at, up.created_at,
         p.slug as permission_slug, p.name as permission_name, p.module, p.action,
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
       JOIN admin_users u ON up.admin_user_id = u.id
       LEFT JOIN admin_users g ON up.granted_by = g.id
       ORDER BY up.created_at DESC
-    `).all() as Array<{
+    `).all()) as Array<{
       id: string;
       admin_user_id: string;
       permission_id: string;
@@ -96,33 +96,33 @@ export async function POST(req: NextRequest) {
     const db = getDb();
 
     // Verify user exists
-    const targetUser = db.prepare("SELECT id, full_name, email FROM admin_users WHERE id = ?").get(adminUserId) as Record<string, unknown> | undefined;
+    const targetUser = (await db.prepare("SELECT id, full_name, email FROM admin_users WHERE id = ?").get(adminUserId)) as Record<string, unknown> | undefined;
     if (!targetUser) {
       return NextResponse.json({ success: false, error: "Target user not found." }, { status: 404 });
     }
 
     // Verify permission exists
-    const perm = db.prepare("SELECT id, name FROM admin_permissions WHERE slug = ?").get(permissionSlug) as { id: string; name: string } | undefined;
+    const perm = (await db.prepare("SELECT id, name FROM admin_permissions WHERE slug = ?").get(permissionSlug)) as { id: string; name: string } | undefined;
     if (!perm) {
       return NextResponse.json({ success: false, error: "Specified permission slug does not exist." }, { status: 422 });
     }
 
     const now = new Date().toISOString();
-    const overrideId = `uov-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`;
+    const overrideId = crypto.randomUUID();
     const cleanExpiresAt = expiresAt ? new Date(expiresAt).toISOString() : null;
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO admin_user_permissions (id, admin_user_id, permission_id, effect, granted_by, reason, expires_at, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(admin_user_id, permission_id) DO UPDATE SET
-        effect = excluded.effect,
-        granted_by = excluded.granted_by,
-        reason = excluded.reason,
-        expires_at = excluded.expires_at,
-        created_at = excluded.created_at
+        effect = EXCLUDED.effect,
+        granted_by = EXCLUDED.granted_by,
+        reason = EXCLUDED.reason,
+        expires_at = EXCLUDED.expires_at,
+        created_at = EXCLUDED.created_at
     `).run(overrideId, adminUserId, perm.id, effect, auth.user.id, reason.trim(), cleanExpiresAt, now);
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: auth.user,
       action: "PERMISSION_OVERRIDE_SET",
       entityType: "admin_user_permission",
@@ -155,21 +155,21 @@ export async function DELETE(req: NextRequest) {
     }
 
     const db = getDb();
-    const existing = db.prepare(`
+    const existing = (await db.prepare(`
       SELECT up.id, u.email, p.slug as permission_slug
       FROM admin_user_permissions up
       JOIN admin_users u ON up.admin_user_id = u.id
       JOIN admin_permissions p ON up.permission_id = p.id
       WHERE up.id = ?
-    `).get(id) as Record<string, unknown> | undefined;
+    `).get(id)) as Record<string, unknown> | undefined;
 
     if (!existing) {
       return NextResponse.json({ success: false, error: "Override not found." }, { status: 404 });
     }
 
-    db.prepare("DELETE FROM admin_user_permissions WHERE id = ?").run(id);
+    await db.prepare("DELETE FROM admin_user_permissions WHERE id = ?").run(id);
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: auth.user,
       action: "PERMISSION_OVERRIDE_REMOVED",
       entityType: "admin_user_permission",

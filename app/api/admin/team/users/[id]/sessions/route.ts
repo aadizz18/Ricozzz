@@ -13,10 +13,10 @@ export async function GET(
   try {
     const { id } = await params;
     const db = getDb();
-    const sessions = db.prepare(`
+    const sessions = await db.prepare(`
       SELECT id, ip_address, user_agent, expires_at, last_activity_at, created_at
       FROM admin_sessions
-      WHERE user_id = ?
+      WHERE user_id = ? AND expires_at > NOW()
       ORDER BY created_at DESC
     `).all(id);
 
@@ -41,15 +41,15 @@ export async function POST(
 
     let revokedCount = 0;
     if (revokeAll) {
-      revokedCount = revokeAllUserSessions(id);
+      revokedCount = await revokeAllUserSessions(id);
     } else if (sessionId) {
-      const success = revokeSessionById(sessionId);
+      const success = await revokeSessionById(sessionId);
       revokedCount = success ? 1 : 0;
     } else {
       return NextResponse.json({ success: false, error: "Specify sessionId or revokeAll=true." }, { status: 422 });
     }
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: auth.user,
       action: "SESSION_REVOKED",
       entityType: "admin_session",

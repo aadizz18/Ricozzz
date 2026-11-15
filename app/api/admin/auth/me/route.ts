@@ -3,7 +3,7 @@ import { getAdminUserFromRequest } from "@/lib/admin/auth";
 
 export async function GET(req: NextRequest) {
   try {
-    const user = getAdminUserFromRequest(req);
+    const user = await getAdminUserFromRequest(req);
     if (!user) {
       return NextResponse.json(
         { success: false, error: "Unauthenticated" },

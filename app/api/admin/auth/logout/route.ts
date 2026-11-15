@@ -4,15 +4,15 @@ import { recordAuditLog } from "@/lib/admin/audit";
 
 export async function POST(req: NextRequest) {
   try {
-    const user = getAdminUserFromRequest(req);
+    const user = await getAdminUserFromRequest(req);
     const sessionToken = req.cookies.get(SESSION_COOKIE_NAME)?.value;
 
     if (sessionToken) {
-      destroyAdminSession(sessionToken);
+      await destroyAdminSession(sessionToken);
     }
 
     if (user) {
-      recordAuditLog({
+      await recordAuditLog({
         actor: user,
         action: "USER_LOGOUT",
         entityType: "admin_user",

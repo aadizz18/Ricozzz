@@ -15,7 +15,7 @@ export async function GET(
     const { id } = await params;
     const db = getDb();
 
-    const userRow = db.prepare(`
+    const userRow = (await db.prepare(`
       SELECT 
         u.id, u.email, u.full_name, u.role, u.department_id, u.status, u.avatar, u.last_login_at, u.created_at,
         d.name as department_name,
@@ -24,19 +24,19 @@ export async function GET(
       LEFT JOIN departments d ON u.department_id = d.id
       LEFT JOIN admin_roles r ON u.role = r.slug
       WHERE u.id = ?
-    `).get(id) as Record<string, unknown> | undefined;
+    `).get(id)) as Record<string, unknown> | undefined;
 
     if (!userRow) {
       return NextResponse.json({ success: false, error: "Team member not found." }, { status: 404 });
     }
 
-    const { permissions, overrides } = loadUserPermissions(id, String(userRow.role));
-    const departmentMemberships = loadUserDepartmentMemberships(id);
+    const { permissions, overrides } = await loadUserPermissions(id, String(userRow.role));
+    const departmentMemberships = await loadUserDepartmentMemberships(id);
 
-    const sessions = db.prepare(`
+    const sessions = await db.prepare(`
       SELECT id, ip_address, user_agent, expires_at, last_activity_at, created_at
       FROM admin_sessions
-      WHERE user_id = ? AND expires_at > datetime('now')
+      WHERE user_id = ? AND expires_at > NOW()
       ORDER BY created_at DESC
     `).all(id);
 
@@ -80,7 +80,7 @@ export async function PATCH(
     const { fullName, role, departmentId, status } = body;
 
     const db = getDb();
-    const targetUser = db.prepare("SELECT * FROM admin_users WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    const targetUser = (await db.prepare("SELECT * FROM admin_users WHERE id = ?").get(id)) as Record<string, unknown> | undefined;
     if (!targetUser) {
       return NextResponse.json({ success: false, error: "Team member not found." }, { status: 404 });
     }
@@ -94,7 +94,7 @@ export async function PATCH(
         );
       }
       // Check target role exists
-      const roleExists = db.prepare("SELECT id FROM admin_roles WHERE slug = ?").get(role);
+      const roleExists = await db.prepare("SELECT id FROM admin_roles WHERE slug = ?").get(role);
       if (!roleExists) {
         return NextResponse.json({ success: false, error: "Target role does not exist." }, { status: 422 });
       }
@@ -107,7 +107,7 @@ export async function PATCH(
       }
       if (status === "suspended") {
         // Immediately revoke all active sessions for suspended user
-        revokeAllUserSessions(id);
+        await revokeAllUserSessions(id);
       }
     }
 
@@ -118,9 +118,9 @@ export async function PATCH(
       : (targetUser.department_id ? String(targetUser.department_id) : null);
     const updatedStatus = status !== undefined ? String(status) : String(targetUser.status);
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE admin_users
-      SET full_name = ?, role = ?, department_id = ?, status = ?
+      SET full_name = ?, role = ?, department_id = ?, status = ?, updated_at = NOW()
       WHERE id = ?
     `).run(updatedFullName, updatedRole, updatedDeptId, updatedStatus, id);
 
@@ -128,20 +128,20 @@ export async function PATCH(
     if (departmentId !== undefined && departmentId !== targetUser.department_id) {
       const now = new Date().toISOString();
       if (updatedDeptId) {
-        db.prepare(`
-          INSERT INTO admin_department_members (id, admin_user_id, department_id, membership_role, is_primary, created_at)
-          VALUES (?, ?, ?, 'member', 1, ?)
-          ON CONFLICT(admin_user_id, department_id) DO UPDATE SET is_primary = 1
-        `).run(`dmem-${id}-${updatedDeptId}`, id, updatedDeptId, now);
+        await db.prepare(`
+          INSERT INTO admin_department_members (admin_user_id, department_id, membership_role, is_primary, created_at)
+          VALUES (?, ?, 'member', true, ?)
+          ON CONFLICT(admin_user_id, department_id) DO UPDATE SET is_primary = true
+        `).run(id, updatedDeptId, now);
 
         // Mark previous department memberships as non-primary
-        db.prepare("UPDATE admin_department_members SET is_primary = 0 WHERE admin_user_id = ? AND department_id != ?").run(id, updatedDeptId);
+        await db.prepare("UPDATE admin_department_members SET is_primary = false WHERE admin_user_id = ? AND department_id != ?").run(id, updatedDeptId);
       } else {
-        db.prepare("UPDATE admin_department_members SET is_primary = 0 WHERE admin_user_id = ?").run(id);
+        await db.prepare("UPDATE admin_department_members SET is_primary = false WHERE admin_user_id = ?").run(id);
       }
     }
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: auth.user,
       action: "USER_UPDATE",
       entityType: "admin_user",
@@ -174,7 +174,7 @@ export async function DELETE(
     }
 
     const db = getDb();
-    const targetUser = db.prepare("SELECT * FROM admin_users WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    const targetUser = (await db.prepare("SELECT * FROM admin_users WHERE id = ?").get(id)) as Record<string, unknown> | undefined;
     if (!targetUser) {
       return NextResponse.json({ success: false, error: "Team member not found." }, { status: 404 });
     }
@@ -184,12 +184,12 @@ export async function DELETE(
     }
 
     // Revoke sessions first
-    revokeAllUserSessions(id);
+    await revokeAllUserSessions(id);
 
     // Delete user (cascade removes memberships, sessions, overrides)
-    db.prepare("DELETE FROM admin_users WHERE id = ?").run(id);
+    await db.prepare("DELETE FROM admin_users WHERE id = ?").run(id);
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: auth.user,
       action: "USER_DELETE",
       entityType: "admin_user",

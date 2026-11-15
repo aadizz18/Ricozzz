@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     // 1. Sliding-window Brute Force Rate Limiting Check
     const rateLimit = checkLoginRateLimit(ip, normalizedEmail);
     if (!rateLimit.allowed) {
-      recordAuditLog({
+      await recordAuditLog({
         actor: null,
         action: "LOGIN_RATE_LIMITED",
         entityType: "auth",
@@ -46,12 +46,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Authoritative Server-side Credential Verification
-    const user = authenticateAdminCredentials(normalizedEmail, password);
+    // 2. Authoritative Server-side Credential Verification & First-Admin Bootstrap
+    const authResult = await authenticateAdminCredentials(normalizedEmail, password);
+    const user = authResult.user;
+
     if (!user) {
       recordLoginFailure(ip, normalizedEmail);
 
-      recordAuditLog({
+      await recordAuditLog({
         actor: null,
         action: "LOGIN_FAILED",
         entityType: "auth",
@@ -61,7 +63,7 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json(
-        { success: false, error: "Invalid administrative credentials or account suspended." },
+        { success: false, error: authResult.error || "Invalid administrative credentials or account suspended." },
         { status: 401 }
       );
     }
@@ -69,10 +71,10 @@ export async function POST(req: NextRequest) {
     // Reset rate limit on successful authentication
     recordLoginSuccess(ip, normalizedEmail);
 
-    // 3. Create Session with cryptographically random token
-    const { token } = createAdminSession(user.id, ip, userAgent);
+    // 3. Create Session with cryptographically random token in PostgreSQL admin_sessions
+    const { token } = await createAdminSession(user.id, ip, userAgent);
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: user,
       action: "USER_LOGIN",
       entityType: "admin_user",
@@ -84,6 +86,7 @@ export async function POST(req: NextRequest) {
     const response = NextResponse.json({
       success: true,
       user,
+      sessionToken: token,
     });
 
     // 4. Set secure HTTP-only session cookie
@@ -99,9 +102,9 @@ export async function POST(req: NextRequest) {
 
     return response;
   } catch (error) {
-    console.error("Login API error:", error);
+    console.error("Admin login API error:", error);
     return NextResponse.json(
-      { success: false, error: "Internal server error during authentication." },
+      { success: false, error: "An unexpected server error occurred during login." },
       { status: 500 }
     );
   }

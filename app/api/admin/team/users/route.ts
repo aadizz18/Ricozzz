@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "node:crypto";
-import { getDb, hashPassword } from "@/lib/admin/db";
+import { getDb } from "@/lib/admin/db";
+import { getInsforgeAdminClient } from "@/lib/insforge";
 import { requirePermission } from "@/lib/admin/auth";
 import { recordAuditLog } from "@/lib/admin/audit";
 
@@ -10,18 +10,18 @@ export async function GET(req: NextRequest) {
 
   try {
     const db = getDb();
-    const rows = db.prepare(`
+    const rows = (await db.prepare(`
       SELECT 
         u.id, u.email, u.full_name, u.role, u.department_id, u.status, u.avatar, u.last_login_at, u.created_at,
         d.name as department_name,
         r.name as role_name, r.hierarchy_level,
-        (SELECT COUNT(*) FROM admin_sessions s WHERE s.user_id = u.id AND s.expires_at > datetime('now')) as active_sessions_count,
+        (SELECT COUNT(*) FROM admin_sessions s WHERE s.user_id = u.id AND s.expires_at > NOW()) as active_sessions_count,
         (SELECT COUNT(*) FROM admin_user_permissions up WHERE up.admin_user_id = u.id) as overrides_count
       FROM admin_users u
       LEFT JOIN departments d ON u.department_id = d.id
       LEFT JOIN admin_roles r ON u.role = r.slug
       ORDER BY r.hierarchy_level ASC, u.full_name ASC
-    `).all() as Array<{
+    `).all()) as Array<{
       id: string;
       email: string;
       full_name: string;
@@ -34,8 +34,8 @@ export async function GET(req: NextRequest) {
       department_name: string | null;
       role_name: string | null;
       hierarchy_level: number | null;
-      active_sessions_count: number;
-      overrides_count: number;
+      active_sessions_count: number | string;
+      overrides_count: number | string;
     }>;
 
     const users = rows.map((r) => ({
@@ -51,8 +51,8 @@ export async function GET(req: NextRequest) {
       avatar: r.avatar,
       lastLoginAt: r.last_login_at,
       createdAt: r.created_at,
-      activeSessionsCount: r.active_sessions_count,
-      overridesCount: r.overrides_count,
+      activeSessionsCount: Number(r.active_sessions_count || 0),
+      overridesCount: Number(r.overrides_count || 0),
     }));
 
     return NextResponse.json({ success: true, users });
@@ -87,21 +87,21 @@ export async function POST(req: NextRequest) {
     const db = getDb();
     const normalizedEmail = email.trim().toLowerCase();
 
-    // Check email uniqueness
-    const existing = db.prepare("SELECT id FROM admin_users WHERE LOWER(email) = ?").get(normalizedEmail);
+    // Check email uniqueness in admin_users
+    const existing = await db.prepare("SELECT id FROM admin_users WHERE LOWER(email) = ?").get(normalizedEmail);
     if (existing) {
       return NextResponse.json({ success: false, error: "A team member with this email already exists." }, { status: 409 });
     }
 
     // Verify role exists
-    const roleRow = db.prepare("SELECT id, hierarchy_level FROM admin_roles WHERE slug = ? AND is_active = 1").get(role) as { id: string; hierarchy_level: number } | undefined;
+    const roleRow = (await db.prepare("SELECT id, hierarchy_level FROM admin_roles WHERE slug = ? AND is_active = true").get(role)) as { id: string; hierarchy_level: number } | undefined;
     if (!roleRow) {
       return NextResponse.json({ success: false, error: "Specified role is invalid or inactive." }, { status: 422 });
     }
 
     // Prevent privilege escalation: user cannot assign a role higher or equal to their own unless Super Admin
     if (auth.user.role !== "super_admin") {
-      const actorRole = db.prepare("SELECT hierarchy_level FROM admin_roles WHERE slug = ?").get(auth.user.role) as { hierarchy_level: number } | undefined;
+      const actorRole = (await db.prepare("SELECT hierarchy_level FROM admin_roles WHERE slug = ?").get(auth.user.role)) as { hierarchy_level: number } | undefined;
       const actorLevel = actorRole?.hierarchy_level ?? 99;
       if (roleRow.hierarchy_level <= actorLevel) {
         return NextResponse.json(
@@ -111,8 +111,33 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const { hash, salt } = hashPassword(password);
-    const userId = `usr-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`;
+    // Provision in InsForge Auth
+    const adminClient = getInsforgeAdminClient();
+    let authUserId: string;
+
+    const existingAuthUser = (await db.prepare("SELECT id FROM auth.users WHERE LOWER(email) = ?").get(normalizedEmail)) as { id: string } | undefined;
+    if (existingAuthUser) {
+      authUserId = existingAuthUser.id;
+      await db.prepare("UPDATE auth.users SET email_verified = true WHERE id = ?").run(authUserId);
+    } else {
+      const signupRes = await adminClient.auth.signUp({
+        email: normalizedEmail,
+        password,
+        name: fullName.trim(),
+      });
+
+      if (signupRes.error) {
+        return NextResponse.json({ success: false, error: `Auth registration failed: ${signupRes.error.message}` }, { status: 400 });
+      }
+
+      await db.prepare("UPDATE auth.users SET email_verified = true WHERE LOWER(email) = ?").run(normalizedEmail);
+      const createdAuthUser = (await db.prepare("SELECT id FROM auth.users WHERE LOWER(email) = ?").get(normalizedEmail)) as { id: string } | undefined;
+      if (!createdAuthUser) {
+        return NextResponse.json({ success: false, error: "Failed to provision identity record." }, { status: 500 });
+      }
+      authUserId = createdAuthUser.id;
+    }
+
     const initials = fullName
       .split(" ")
       .map((p: string) => p[0])
@@ -121,24 +146,25 @@ export async function POST(req: NextRequest) {
       .substring(0, 2);
     const now = new Date().toISOString();
 
-    db.prepare(`
-      INSERT INTO admin_users (id, email, password_hash, salt, full_name, role, department_id, status, avatar, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
-    `).run(userId, normalizedEmail, hash, salt, fullName.trim(), role, departmentId || null, initials, now);
+    await db.prepare(`
+      INSERT INTO admin_users (id, email, full_name, role, department_id, status, avatar, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)
+    `).run(authUserId, normalizedEmail, fullName.trim(), role, departmentId || null, initials, now, now);
 
     // If departmentId assigned, register primary department membership
     if (departmentId) {
-      db.prepare(`
-        INSERT INTO admin_department_members (id, admin_user_id, department_id, membership_role, is_primary, created_at)
-        VALUES (?, ?, ?, 'member', 1, ?)
-      `).run(`dmem-${userId}-${departmentId}`, userId, departmentId, now);
+      await db.prepare(`
+        INSERT INTO admin_department_members (admin_user_id, department_id, membership_role, is_primary, created_at)
+        VALUES (?, ?, 'member', true, ?)
+        ON CONFLICT (admin_user_id, department_id) DO UPDATE SET is_primary = true
+      `).run(authUserId, departmentId, now);
     }
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: auth.user,
       action: "USER_CREATE",
       entityType: "admin_user",
-      entityId: userId,
+      entityId: authUserId,
       changeSummary: `Created team member ${fullName} (${role}) in department ${departmentId || "unassigned"}.`,
       ipAddress: req.headers.get("x-forwarded-for") || "127.0.0.1",
     });
@@ -147,7 +173,7 @@ export async function POST(req: NextRequest) {
       success: true,
       message: "Team member provisioned successfully.",
       user: {
-        id: userId,
+        id: authUserId,
         email: normalizedEmail,
         fullName: fullName.trim(),
         role,

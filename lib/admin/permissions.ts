@@ -11,26 +11,26 @@ export interface PermissionContext {
  * 1. Base role permissions from `admin_role_permissions`
  * 2. Active user-level permission overrides from `admin_user_permissions` (with explicit allow / deny precedence)
  */
-export function loadUserPermissions(userId: string, roleSlug: string): {
+export async function loadUserPermissions(userId: string, roleSlug: string): Promise<{
   permissions: string[];
   overrides: AdminUserPermissionOverride[];
-} {
+}> {
   const db = getDb();
   const now = new Date().toISOString();
 
   // 1. Fetch base role permissions
-  const rolePermRows = db.prepare(`
+  const rolePermRows = (await db.prepare(`
     SELECT p.slug
     FROM admin_role_permissions rp
     JOIN admin_roles r ON rp.role_id = r.id
     JOIN admin_permissions p ON rp.permission_id = p.id
-    WHERE r.slug = ? AND r.is_active = 1
-  `).all(roleSlug) as Array<{ slug: string }>;
+    WHERE r.slug = ? AND r.is_active = true
+  `).all(roleSlug)) as Array<{ slug: string }>;
 
   const grantedSet = new Set<string>(rolePermRows.map((r) => r.slug));
 
   // 2. Fetch active user-level overrides
-  const overrideRows = db.prepare(`
+  const overrideRows = (await db.prepare(`
     SELECT 
       up.id, up.admin_user_id, up.permission_id, up.effect, up.granted_by, up.reason, up.expires_at, up.created_at,
       p.slug as permission_slug, p.name as permission_name, p.module, p.action,
@@ -39,7 +39,7 @@ export function loadUserPermissions(userId: string, roleSlug: string): {
     JOIN admin_permissions p ON up.permission_id = p.id
     LEFT JOIN admin_users u ON up.granted_by = u.id
     WHERE up.admin_user_id = ?
-  `).all(userId) as Array<{
+  `).all(userId)) as Array<{
     id: string;
     admin_user_id: string;
     permission_id: string;
@@ -97,9 +97,9 @@ export function loadUserPermissions(userId: string, roleSlug: string): {
 /**
  * Loads department memberships for a user
  */
-export function loadUserDepartmentMemberships(userId: string): AdminDepartmentMember[] {
+export async function loadUserDepartmentMemberships(userId: string): Promise<AdminDepartmentMember[]> {
   const db = getDb();
-  const rows = db.prepare(`
+  const rows = (await db.prepare(`
     SELECT 
       dm.id, dm.admin_user_id, dm.department_id, dm.membership_role, dm.is_primary, dm.created_at,
       d.name as department_name,
@@ -108,12 +108,12 @@ export function loadUserDepartmentMemberships(userId: string): AdminDepartmentMe
     JOIN departments d ON dm.department_id = d.id
     JOIN admin_users u ON dm.admin_user_id = u.id
     WHERE dm.admin_user_id = ?
-  `).all(userId) as Array<{
+  `).all(userId)) as Array<{
     id: string;
     admin_user_id: string;
     department_id: string;
     membership_role: "head" | "manager" | "member" | "observer";
-    is_primary: number;
+    is_primary: boolean | number;
     created_at: string;
     department_name: string;
     user_name: string;
@@ -140,189 +140,106 @@ export function loadUserDepartmentMemberships(userId: string): AdminDepartmentMe
  * Supports both AdminUser objects and legacy role slug strings.
  */
 export function hasPermission(
-  userOrRole: AdminUser | AdminRole | string | null | undefined,
+  userOrRole: AdminUser | AdminRole | string,
   permissionSlug: string,
   context?: PermissionContext
 ): boolean {
-  if (!userOrRole) {
-    return false;
-  }
+  if (!userOrRole) return false;
 
-  // Handle legacy string role call e.g. hasPermission("super_admin", "manage_users")
-  if (typeof userOrRole === "string") {
-    const roleSlug = userOrRole.toLowerCase();
-    if (roleSlug === "super_admin") return true;
+  // Handle object-based AdminUser verification (granular RBAC)
+  if (typeof userOrRole === "object" && "role" in userOrRole) {
+    const user = userOrRole as AdminUser;
 
-    // Check modern DB permissions first
-    const db = getDb();
-    const permRow = db.prepare(`
-      SELECT 1 FROM admin_role_permissions rp
-      JOIN admin_roles r ON rp.role_id = r.id
-      JOIN admin_permissions p ON rp.permission_id = p.id
-      WHERE r.slug = ? AND p.slug = ?
-    `).get(roleSlug, permissionSlug);
+    // Super Admin has total operational access across all permissions and modules
+    if (user.role === "super_admin") {
+      return true;
+    }
 
-    if (permRow) return true;
+    // Suspended users have ZERO operational permissions
+    if (user.status !== "active") {
+      return false;
+    }
 
-    // Check legacy permission alias mappings
-    const legacyPermMap: Record<string, string[]> = {
-      manage_users: ["super_admin"],
-      view_audit_log: ["super_admin", "ops_admin", "auditor"],
-      view_reports: ["super_admin", "ops_admin", "dept_manager", "auditor"],
-      export_reports: ["super_admin", "ops_admin", "auditor"],
-      manage_all_tasks: ["super_admin", "ops_admin"],
-      manage_dept_tasks: ["super_admin", "ops_admin", "dept_manager"],
-      update_task_status: ["super_admin", "ops_admin", "dept_manager", "team_member"],
-      delete_tasks: ["super_admin", "ops_admin"],
-      view_clients: ["super_admin", "ops_admin", "dept_manager", "auditor", "team_member"],
-      edit_clients: ["super_admin", "ops_admin", "dept_manager"],
-      delete_clients: ["super_admin"],
-      view_vendors: ["super_admin", "ops_admin", "dept_manager", "auditor", "team_member"],
-      edit_vendors: ["super_admin", "ops_admin", "dept_manager"],
-      verify_vendors: ["super_admin", "ops_admin"],
-      delete_vendors: ["super_admin"],
-      manage_tickets: ["super_admin", "ops_admin", "dept_manager", "team_member"],
-      escalate_tickets: ["super_admin", "ops_admin", "dept_manager", "team_member"],
-      resolve_tickets: ["super_admin", "ops_admin", "dept_manager"],
-      view_sops: ["super_admin", "ops_admin", "dept_manager", "team_member", "auditor"],
-      manage_sops: ["super_admin", "ops_admin", "dept_manager"],
-    };
+    // Check granular permissions array loaded on session
+    if (user.permissions && Array.isArray(user.permissions)) {
+      const hasDirectPermission = user.permissions.includes(permissionSlug);
+      if (!hasDirectPermission) {
+        return false;
+      }
+    }
 
-    const allowedRoles = legacyPermMap[permissionSlug];
-    return allowedRoles ? allowedRoles.includes(roleSlug) : false;
-  }
+    // Optional Department Scope Check
+    if (context?.departmentId) {
+      if (user.role === "coo" || user.role === "exec_director" || user.role === "auditor" || user.role === "ops_admin") {
+        return true;
+      }
 
-  const user = userOrRole as AdminUser;
-  if (user.status !== "active") {
-    return false;
-  }
+      if (user.departmentId === context.departmentId) {
+        return true;
+      }
 
-  // Super Admin / Owner has unrestricted global access
-  if (user.role === "super_admin") {
+      if (user.departmentMemberships) {
+        const isMember = user.departmentMemberships.some((m) => m.departmentId === context.departmentId);
+        if (isMember) return true;
+      }
+
+      return false;
+    }
+
+    // Optional Resource Ownership Check
+    if (context?.resourceOwnerId) {
+      if (user.role === "dept_head" || user.role === "dept_manager" || user.role === "ops_manager" || user.role === "coo" || user.role === "exec_director") {
+        return true;
+      }
+      return user.id === context.resourceOwnerId;
+    }
+
     return true;
   }
 
-  // 1. Check user-level overrides for explicit deny (highest precedence)
-  if (user.permissionOverrides) {
-    const denyOverride = user.permissionOverrides.find(
-      (o) => o.permissionSlug === permissionSlug && o.effect === "deny"
-    );
-    if (denyOverride) {
-      return false;
-    }
-  }
+  // Handle fallback string role slug
+  const roleSlug = typeof userOrRole === "string" ? userOrRole : (userOrRole as any).role;
+  if (roleSlug === "super_admin") return true;
 
-  // 2. Check if permission exists in user's permissions
-  let hasBasePermission = false;
-  if (user.permissions && Array.isArray(user.permissions)) {
-    hasBasePermission = user.permissions.includes(permissionSlug);
-  } else {
-    // If user object didn't have preloaded permissions, query DB
-    const { permissions } = loadUserPermissions(user.id, user.role);
-    hasBasePermission = permissions.includes(permissionSlug);
-  }
-
-  if (!hasBasePermission) {
-    return false;
-  }
-
-  // 3. Department-based Access Boundaries
-  if (context?.departmentId) {
-    // Executive roles have cross-department operational oversight
-    const crossDeptRoles = ["super_admin", "exec_director", "coo", "auditor"];
-    if (crossDeptRoles.includes(user.role)) {
-      return true;
-    }
-
-    // Check if the target department is user's primary department
-    if (user.departmentId === context.departmentId) {
-      return true;
-    }
-
-    // Check if user is a member/head of that department in admin_department_members
-    const memberships = user.departmentMemberships || loadUserDepartmentMemberships(user.id);
-    const isMember = memberships.some((m) => m.departmentId === context.departmentId);
-    if (!isMember) {
-      // User is attempting to access a department they do not belong to
-      return false;
-    }
-  }
-
-  return true;
+  return false;
 }
 
 /**
- * Retrieves the complete catalogue of granular permissions
+ * Retrieves all registered administrative roles with their associated permissions and user counts.
  */
-export function getAllPermissions(): AdminPermission[] {
+export async function getAllRoles(): Promise<AdminRoleDef[]> {
   const db = getDb();
-  const rows = db.prepare(`
-    SELECT id, name, slug, description, module, action, created_at
-    FROM admin_permissions
-    ORDER BY module ASC, slug ASC
-  `).all() as Array<{
-    id: string;
-    name: string;
-    slug: string;
-    description: string;
-    module: string;
-    action: string;
-    created_at: string;
-  }>;
+  const roles = (await db.prepare(`
+    SELECT id, name, slug, description, hierarchy_level, is_system_role, is_active, created_at, updated_at
+    FROM admin_roles
+    ORDER BY hierarchy_level ASC
+  `).all()) as any[];
 
-  return rows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    slug: r.slug,
-    description: r.description,
-    module: r.module,
-    action: r.action,
-    createdAt: r.created_at,
-  }));
-}
-
-/**
- * Retrieves all defined administrative roles with their assigned permissions
- */
-export function getAllRoles(): AdminRoleDef[] {
-  const db = getDb();
-  const roles = db.prepare(`
-    SELECT 
-      r.id, r.name, r.slug, r.description, r.hierarchy_level, r.is_system_role, r.is_active, r.created_at, r.updated_at,
-      COUNT(DISTINCT u.id) as user_count
-    FROM admin_roles r
-    LEFT JOIN admin_users u ON r.slug = u.role
-    GROUP BY r.id
-    ORDER BY r.hierarchy_level ASC
-  `).all() as Array<{
-    id: string;
-    name: string;
-    slug: string;
-    description: string;
-    hierarchy_level: number;
-    is_system_role: number;
-    is_active: number;
-    created_at: string;
-    updated_at: string;
-    user_count: number;
-  }>;
-
-  const rolePermMap = new Map<string, string[]>();
-  const rolePerms = db.prepare(`
-    SELECT rp.role_id, p.slug
+  const rolePerms = (await db.prepare(`
+    SELECT rp.role_id, p.slug as permission_slug
     FROM admin_role_permissions rp
     JOIN admin_permissions p ON rp.permission_id = p.id
-  `).all() as Array<{ role_id: string; slug: string }>;
+  `).all()) as Array<{ role_id: string; permission_slug: string }>;
 
+  const userCounts = (await db.prepare(`
+    SELECT role, count(*) as count
+    FROM admin_users
+    GROUP BY role
+  `).all()) as Array<{ role: string; count: string | number }>;
+
+  const permMap = new Map<string, string[]>();
   for (const rp of rolePerms) {
-    if (!rolePermMap.has(rp.role_id)) {
-      rolePermMap.set(rp.role_id, []);
-    }
-    rolePermMap.get(rp.role_id)!.push(rp.slug);
+    if (!permMap.has(rp.role_id)) permMap.set(rp.role_id, []);
+    permMap.get(rp.role_id)!.push(rp.permission_slug);
+  }
+
+  const countMap = new Map<string, number>();
+  for (const uc of userCounts) {
+    countMap.set(uc.role, Number(uc.count));
   }
 
   return roles.map((r) => {
-    const perms = rolePermMap.get(r.id) || [];
+    const perms = permMap.get(r.id) || [];
     return {
       id: r.id,
       name: r.name,
@@ -333,9 +250,31 @@ export function getAllRoles(): AdminRoleDef[] {
       isActive: Boolean(r.is_active),
       permissions: perms,
       permissionCount: perms.length,
-      userCount: r.user_count,
+      userCount: countMap.get(r.slug) || 0,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     };
   });
+}
+
+/**
+ * Retrieves the full 56-permission catalogue from PostgreSQL.
+ */
+export async function getAllPermissions(): Promise<AdminPermission[]> {
+  const db = getDb();
+  const rows = (await db.prepare(`
+    SELECT id, name, slug, description, module, action, created_at
+    FROM admin_permissions
+    ORDER BY module ASC, slug ASC
+  `).all()) as any[];
+
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    slug: r.slug,
+    description: r.description,
+    module: r.module,
+    action: r.action,
+    createdAt: r.created_at,
+  }));
 }

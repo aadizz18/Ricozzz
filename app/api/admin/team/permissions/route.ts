@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
   if ("errorResponse" in auth) return auth.errorResponse;
 
   try {
-    const permissions = getAllPermissions();
+    const permissions = await getAllPermissions();
     return NextResponse.json({ success: true, permissions });
   } catch (error) {
     console.error("Permissions GET error:", error);
