@@ -254,7 +254,7 @@ export default function ProjectDetailsPage() {
                       <div className="min-w-0 space-y-1 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <Link
-                            href={`/designers/${designer.id}`}
+                            href={`/talent/${designer.id}`}
                             className="font-medium text-base text-brand hover:text-accent transition-colors"
                           >
                             {designer.name}
@@ -329,7 +329,7 @@ export default function ProjectDetailsPage() {
                         </button>
 
                         <Button
-                          href={`/designers/${designer.id}`}
+                          href={`/talent/${designer.id}`}
                           variant="secondary"
                           size="sm"
                         >

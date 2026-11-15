@@ -35,7 +35,7 @@ export function CinematicCTA() {
 
         <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4">
           <Link
-            href="/designers"
+            href="/talent"
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl bg-accent text-background font-mono text-xs font-bold uppercase tracking-wider hover:bg-accent-hover transition-colors shadow-glow"
           >
             <span>Find Creative Talent</span>

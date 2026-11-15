@@ -9,6 +9,7 @@ import { BrandArtifactsShowcase } from "@/components/informational/BrandArtifact
 import { PlatformPreview } from "@/components/informational/PlatformPreview";
 import { WhyRicozSection } from "@/components/informational/WhyRicozSection";
 import { WhoIsItForSection } from "@/components/informational/WhoIsItForSection";
+import { FAQSection } from "@/components/informational/FAQSection";
 import { FinalCTASection } from "@/components/informational/FinalCTASection";
 import { Footer } from "@/components/Footer";
 import { ConciergeBriefingModal } from "@/components/informational/ConciergeBriefingModal";
@@ -51,7 +52,10 @@ export default function HomePage() {
         {/* SECTION 7: FOR COMPANIES AND CREATIVES */}
         <WhoIsItForSection />
 
-        {/* SECTION 8: FINAL INVITATION / HIGH-CONVERSION CTA */}
+        {/* SECTION 8: FREQUENTLY ASKED QUESTIONS */}
+        <FAQSection />
+
+        {/* SECTION 9: FINAL INVITATION / HIGH-CONVERSION CTA */}
         <FinalCTASection onOpenBriefing={handleOpenBriefing} />
       </main>
 

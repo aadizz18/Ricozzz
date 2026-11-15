@@ -15,7 +15,7 @@ export async function GET(
     const { id } = await params;
     const db = getDb();
 
-    const vendor = db.prepare(`
+    const vendor = await db.prepare(`
       SELECT 
         v.id, v.name, v.service_category, v.contact_name, v.contact_email, v.phone,
         v.onboarding_stage, v.verification_status, v.assigned_coordinator_id, v.notes,
@@ -30,7 +30,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: "Vendor not found" }, { status: 404 });
     }
 
-    const documents = db.prepare(`
+    const documents = await db.prepare(`
       SELECT 
         vd.id, vd.vendor_id, vd.document_type, vd.file_name, vd.file_url, vd.is_verified,
         vd.verified_at,
@@ -64,7 +64,7 @@ export async function PATCH(
     const { id } = await params;
     const db = getDb();
 
-    const existing = db.prepare("SELECT * FROM vendors WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    const existing = (await db.prepare("SELECT * FROM vendors WHERE id = ?").get(id)) as Record<string, unknown> | undefined;
     if (!existing) {
       return NextResponse.json({ success: false, error: "Vendor not found" }, { status: 404 });
     }
@@ -78,8 +78,8 @@ export async function PATCH(
         return NextResponse.json({ success: false, error: "Permission denied: 'vendors.approve' required to verify vendor documents." }, { status: 403 });
       }
 
-      const isVerified = body.isVerified ? 1 : 0;
-      db.prepare(`
+      const isVerified = Boolean(body.isVerified);
+      await db.prepare(`
         UPDATE vendor_documents SET
           is_verified = ?,
           verified_by_user_id = ?,
@@ -93,7 +93,7 @@ export async function PATCH(
         id
       );
 
-      recordAuditLog({
+      await recordAuditLog({
         actor: user,
         action: "VENDOR_DOCUMENT_VERIFIED",
         entityType: "vendor_document",
@@ -112,10 +112,11 @@ export async function PATCH(
       }
 
       // Check whether all required documents are verified
-      const unverifiedCount = (db.prepare(`
+      const unverifiedCountRow = (await db.prepare(`
         SELECT count(*) as count FROM vendor_documents
-        WHERE vendor_id = ? AND is_verified = 0
-      `).get(id) as { count: number })?.count || 0;
+        WHERE vendor_id = ? AND is_verified = FALSE
+      `).get(id)) as { count: number | string } | undefined;
+      const unverifiedCount = Number(unverifiedCountRow?.count || 0);
 
       if (unverifiedCount > 0 && !body.forceOverride) {
         return NextResponse.json({
@@ -125,12 +126,14 @@ export async function PATCH(
       }
     }
 
-    const stage = body.onboardingStage !== undefined ? body.onboardingStage : existing.onboarding_stage;
+    let rawStage = body.onboardingStage !== undefined ? body.onboardingStage : existing.onboarding_stage;
+    if (rawStage === "active") rawStage = "approved";
+    const stage = rawStage;
     const verificationStatus = body.verificationStatus !== undefined ? body.verificationStatus : existing.verification_status;
     const notes = body.notes !== undefined ? body.notes : existing.notes;
     const coordinatorId = body.assignedCoordinatorId !== undefined ? body.assignedCoordinatorId : existing.assigned_coordinator_id;
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE vendors SET
         onboarding_stage = ?,
         verification_status = ?,
@@ -140,7 +143,7 @@ export async function PATCH(
       WHERE id = ?
     `).run(stage, verificationStatus, notes, coordinatorId, now, id);
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: user,
       action: "VENDOR_UPDATED",
       entityType: "vendor",
@@ -168,14 +171,14 @@ export async function DELETE(
     const { id } = await params;
     const db = getDb();
 
-    const existing = db.prepare("SELECT name FROM vendors WHERE id = ?").get(id) as { name: string } | undefined;
+    const existing = (await db.prepare("SELECT name FROM vendors WHERE id = ?").get(id)) as { name: string } | undefined;
     if (!existing) {
       return NextResponse.json({ success: false, error: "Vendor not found" }, { status: 404 });
     }
 
-    db.prepare("DELETE FROM vendors WHERE id = ?").run(id);
+    await db.prepare("DELETE FROM vendors WHERE id = ?").run(id);
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: user,
       action: "VENDOR_DELETED",
       entityType: "vendor",

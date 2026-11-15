@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { saveProject, getCurrentUser } from "@/lib/storage";
+import { adminApi } from "@/lib/admin/apiClient";
 import { TALENT_PROFILES } from "@/data/talentProfiles";
 import { TalentProfile } from "@/types/talent";
 import { Industry, Role, BudgetTier, Project } from "@/types";
@@ -114,12 +115,17 @@ export default function StartProjectPage() {
   };
 
   const handleCompleteAndMatch = () => {
-    // Save project
+    const user = getCurrentUser();
+    const effectiveCompany = companyName.trim() || user?.companyName || "Apex Ventures";
+    const effectiveName = user?.name || effectiveCompany;
+    const effectiveEmail = user?.email || `client-${Date.now().toString().slice(-4)}@mandate.internal`;
+
+    // Save project locally
     const newProj: Project = {
       id: `proj-${Date.now()}`,
       title,
-      companyId: getCurrentUser()?.id || "client-guest",
-      companyName: companyName.trim() || "Apex Ventures",
+      companyId: user?.id || "client-guest",
+      companyName: effectiveCompany,
       industry,
       status: "Matching",
       timeline,
@@ -138,6 +144,21 @@ export default function StartProjectPage() {
 
     saveProject(newProj);
     setSavedProjectId(newProj.id);
+
+    // Persist to PostgreSQL backend via public enquiry API
+    adminApi.public
+      .submitEnquiry({
+        fullName: effectiveName,
+        email: effectiveEmail,
+        company: effectiveCompany,
+        mandateType: title,
+        timeline,
+        budgetRange,
+        projectBrief: `Goals: ${selectedGoals.join(", ")}. Required Services: ${selectedRoles.join(", ")}. Target Audience: ${targetAudience}. Industry: ${industry}.`,
+      })
+      .catch((err) => {
+        console.warn("Could not sync project mandate to backend PostgreSQL:", err);
+      });
 
     // Compute top matching talent from TALENT_PROFILES based on selected roles
     const matches = TALENT_PROFILES.filter((t) =>

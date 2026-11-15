@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
     const { user } = auth;
 
     const db = getDb();
-    const notifications = db.prepare(`
+    const notifications = await db.prepare(`
       SELECT id, user_id, title, message, type, link, is_read, created_at
       FROM notifications
       WHERE user_id = ?
@@ -38,14 +38,35 @@ export async function PATCH(req: NextRequest) {
     const { notificationId, markAll } = body;
 
     if (markAll) {
-      db.prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ?").run(user.id);
+      await db.prepare("UPDATE notifications SET is_read = TRUE WHERE user_id = ?").run(user.id);
     } else if (notificationId) {
-      db.prepare("UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?").run(notificationId, user.id);
+      await db.prepare("UPDATE notifications SET is_read = TRUE WHERE id = ? AND user_id = ?").run(notificationId, user.id);
     }
 
     return NextResponse.json({ success: true, message: "Notifications updated." });
   } catch (error) {
     console.error("Notifications PATCH error:", error);
     return NextResponse.json({ success: false, error: "Failed to update notifications" }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const auth = await requirePermission("notifications.manage", req);
+    if ("errorResponse" in auth) return auth.errorResponse;
+    const { user } = auth;
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+    if (!id) {
+      return NextResponse.json({ success: false, error: "Notification id required" }, { status: 400 });
+    }
+
+    const db = getDb();
+    await db.prepare("DELETE FROM notifications WHERE id = ? AND user_id = ?").run(id, user.id);
+    return NextResponse.json({ success: true, message: "Notification deleted." });
+  } catch (error) {
+    console.error("Notifications DELETE error:", error);
+    return NextResponse.json({ success: false, error: "Failed to delete notification" }, { status: 500 });
   }
 }

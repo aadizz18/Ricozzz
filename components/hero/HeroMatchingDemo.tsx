@@ -550,7 +550,7 @@ export function HeroMatchingDemo() {
                   Ready to kickoff project
                 </span>
                 <Link
-                  href="/designers"
+                  href="/talent"
                   className="inline-flex items-center gap-1 text-[10px] font-mono text-accent hover:text-accent-hover font-semibold"
                 >
                   <span>Review Profiles</span>
@@ -721,7 +721,7 @@ export function HeroMatchingDemo() {
           {/* Bottom Shortlist Summary */}
           <div className="pt-2 flex items-center justify-between text-xs font-mono">
             <Link
-              href="/designers"
+              href="/talent"
               className="w-full py-2 px-3 rounded bg-accent text-background text-center font-semibold flex items-center justify-center gap-1 text-xs"
             >
               <span>Explore Matched Creative Talent</span>

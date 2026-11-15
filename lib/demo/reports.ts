@@ -144,6 +144,19 @@ export function getReports(departmentId?: string, range = "30d"): ReportData {
 export function exportReportsToCsv(type: string): void {
   if (typeof window === "undefined" || typeof document === "undefined") return;
 
+  const exportTypeMap: Record<string, string> = {
+    tasks: "tasks",
+    clients: "clients",
+    vendors: "vendors",
+    support: "tickets",
+  };
+
+  const apiType = exportTypeMap[type];
+  if (apiType) {
+    window.location.href = `/api/admin/reports/export?type=${apiType}`;
+    return;
+  }
+
   let headers: string[] = [];
   let rows: (string | number)[][] = [];
   let filename = `ricoz_${type}_export_${new Date().toISOString().split("T")[0]}.csv`;

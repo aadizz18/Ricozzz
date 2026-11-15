@@ -1,10 +1,33 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Layers, FileCode2, Type, Box, FileText } from "lucide-react";
 import { EditorialStar, EditorialBadge } from "@/components/ui/EditorialDecorations";
+import { adminApi } from "@/lib/admin/apiClient";
 
 export const BrandArtifactsShowcase: React.FC = () => {
+  const [sectionData, setSectionData] = useState<{ title?: string; subtitle?: string }>({});
+
+  useEffect(() => {
+    let isMounted = true;
+    adminApi.public
+      .getContent()
+      .then((res) => {
+        if (!isMounted || !res.success) return;
+        if (res.sections?.brand_artifacts) {
+          setSectionData({
+            title: res.sections.brand_artifacts.title,
+            subtitle: res.sections.brand_artifacts.subtitle,
+          });
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const artifacts = [
     {
       title: "Visual Identity Systems",
@@ -60,11 +83,12 @@ export const BrandArtifactsShowcase: React.FC = () => {
           </div>
 
           <h2 className="text-2xl sm:text-3xl lg:text-4xl font-serif font-bold tracking-tight text-[#38241F] leading-tight">
-            Production Artifacts Shipped Across Mandates
+            {sectionData.title || "Production Artifacts Shipped Across Mandates"}
           </h2>
 
           <p className="mt-3 text-sm sm:text-base text-[#76665F] leading-relaxed font-sans">
-            We prioritize demonstrable craftsmanship over unverified corporate logos. Every engagement yields rigorous, documented deliverables built for enterprise scale.
+            {sectionData.subtitle ||
+              "We prioritize demonstrable craftsmanship over unverified corporate logos. Every engagement yields rigorous, documented deliverables built for enterprise scale."}
           </p>
         </div>
 

@@ -21,7 +21,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { Department } from "@/lib/admin/types";
-import { getDashboardStats, getDepartments } from "@/lib/demo";
+import { adminApi } from "@/lib/admin/apiClient";
 
 export default function AdminDashboardPage() {
   const [data, setData] = useState<any>(null);
@@ -31,15 +31,22 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchData = () => {
+  const fetchData = async () => {
     try {
       setRefreshing(true);
-      const dashData = getDashboardStats(selectedDept || undefined, selectedRange);
-      const depts = getDepartments();
-      setData(dashData);
-      setDepartments(depts);
+      const [dashRes, deptRes] = await Promise.allSettled([
+        adminApi.dashboard.getStats(selectedDept || undefined, selectedRange),
+        adminApi.departments.list(),
+      ]);
+
+      if (dashRes.status === "fulfilled" && dashRes.value.success && dashRes.value.data) {
+        setData(dashRes.value.data);
+      }
+      if (deptRes.status === "fulfilled" && deptRes.value.success && deptRes.value.departments) {
+        setDepartments(deptRes.value.departments);
+      }
     } catch (err) {
-      console.error("Error loading demo dashboard:", err);
+      console.error("Error loading live dashboard:", err);
     } finally {
       setLoading(false);
       setRefreshing(false);

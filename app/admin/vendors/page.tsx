@@ -20,15 +20,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Vendor, VendorVerificationStatus, VendorOnboardingStage, AdminUser } from "@/lib/admin/types";
-import {
-  getVendors,
-  getVendorById,
-  createVendor,
-  updateVendor,
-  deleteVendor,
-  verifyVendorDocument,
-  getDepartmentMembers,
-} from "@/lib/demo";
+import { adminApi } from "@/lib/admin/apiClient";
 
 export default function AdminVendorsPage() {
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -56,26 +48,30 @@ export default function AdminVendorsPage() {
   const [newNotes, setNewNotes] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
-  const fetchVendors = () => {
+  const fetchVendors = async () => {
     try {
       setLoading(true);
-      const data = getVendors({
+      const res = await adminApi.vendors.list({
         status: statusFilter || undefined,
         stage: stageFilter || undefined,
         search: search || undefined,
       });
-      setVendors(data);
+      if (res.success && Array.isArray(res.vendors)) {
+        setVendors(res.vendors);
+      }
     } catch (err) {
-      console.error("Error fetching demo vendors:", err);
+      console.error("Error fetching live vendors:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchTeam = () => {
+  const fetchTeam = async () => {
     try {
-      const members = getDepartmentMembers();
-      setTeamMembers(members as any);
+      const res = await adminApi.team.listUsers();
+      if (res.success && res.users) {
+        setTeamMembers(res.users);
+      }
     } catch {
       // Non-blocking
     }
@@ -89,112 +85,151 @@ export default function AdminVendorsPage() {
     fetchVendors();
   }, [statusFilter, stageFilter, search]);
 
-  const openVendorDetail = (v: Vendor) => {
+  const openVendorDetail = async (v: Vendor) => {
     setSelectedVendor(v);
     setNotesDraft(v.notes || "");
     setErrorAlert(null);
     try {
-      const res = getVendorById(v.id);
-      if (res.vendor) {
+      const res = await adminApi.vendors.get(v.id);
+      if (res.success && res.vendor) {
         setSelectedVendor(res.vendor);
         setDocuments(res.documents || []);
       }
-    } catch {
-      // fallback
+    } catch (err) {
+      console.error("Error loading vendor details:", err);
     }
   };
 
-  const handleCreateVendor = (e: React.FormEvent) => {
+  const handleCreateVendor = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
     setSaving(true);
 
     try {
-      createVendor({
-        name: newName,
+      const res = await adminApi.vendors.create({
+        name: newName.trim(),
         serviceCategory: newCategory,
-        contactName: newContactName,
-        contactEmail: newContactEmail,
-        phone: newPhone,
+        contactName: newContactName.trim() || undefined,
+        contactEmail: newContactEmail.trim() || undefined,
+        phone: newPhone.trim() || undefined,
         assignedCoordinatorId: newCoordinatorId || null,
-        notes: newNotes,
+        notes: newNotes.trim() || undefined,
       });
 
-      setCreateModalOpen(false);
-      setNewName("");
-      setNewContactName("");
-      setNewContactEmail("");
-      fetchVendors();
-    } catch {
-      setFormError("Error creating vendor in demo mode");
+      if (res.success) {
+        setCreateModalOpen(false);
+        setNewName("");
+        setNewContactName("");
+        setNewContactEmail("");
+        setNewNotes("");
+        await fetchVendors();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("ricoz_admin_refresh"));
+        }
+      } else {
+        setFormError(res.error || "Error registering vendor");
+      }
+    } catch (err: any) {
+      setFormError(err.message || "Error creating vendor");
     } finally {
       setSaving(false);
     }
   };
 
-  const handleToggleDocument = (docId: string, currentStatus: boolean) => {
+  const handleToggleDocument = async (docId: string, currentStatus: boolean) => {
     if (!selectedVendor) return;
     setErrorAlert(null);
 
     try {
-      verifyVendorDocument(selectedVendor.id, docId, !currentStatus);
-      const res = getVendorById(selectedVendor.id);
-      if (res.vendor) {
+      const nextStatus = !currentStatus;
+      const res = await adminApi.vendors.update(selectedVendor.id, {
+        verifyDocId: docId,
+        isVerified: nextStatus,
+      });
+      if (res.success) {
+        setDocuments((prev) =>
+          prev.map((d) => (d.id === docId ? { ...d, isVerified: nextStatus, is_verified: nextStatus ? 1 : 0 } : d))
+        );
+        await openVendorDetail(selectedVendor);
+        await fetchVendors();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("ricoz_admin_refresh"));
+        }
+      } else {
+        setErrorAlert(res.error || "Failed to update document verification");
+      }
+    } catch (err: any) {
+      setErrorAlert(err.message || "Failed to update document verification status");
+    }
+  };
+
+  const handleSetVerificationStatus = async (status: VendorVerificationStatus) => {
+    if (!selectedVendor) return;
+    setErrorAlert(null);
+
+    try {
+      const res = await adminApi.vendors.update(selectedVendor.id, { verificationStatus: status });
+      if (res.success && res.vendor) {
         setSelectedVendor(res.vendor);
-        setDocuments(res.documents || []);
+        await fetchVendors();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("ricoz_admin_refresh"));
+        }
+      } else {
+        setErrorAlert(res.error || "Failed to update vendor status");
       }
-      fetchVendors();
-    } catch {
-      setErrorAlert("Failed to update document verification status in demo mode");
+    } catch (err: any) {
+      setErrorAlert(err.message || "Failed to update vendor verification status");
     }
   };
 
-  const handleSetVerificationStatus = (status: VendorVerificationStatus) => {
-    if (!selectedVendor) return;
-    setErrorAlert(null);
-
-    try {
-      const updated = updateVendor(selectedVendor.id, { verificationStatus: status });
-      if (updated) {
-        setSelectedVendor(updated);
-        fetchVendors();
-      }
-    } catch {
-      setErrorAlert("Failed to update vendor verification status");
-    }
-  };
-
-  const handleUpdateStage = (stage: VendorOnboardingStage) => {
+  const handleUpdateStage = async (stage: VendorOnboardingStage) => {
     if (!selectedVendor) return;
 
     try {
-      const updated = updateVendor(selectedVendor.id, { onboardingStage: stage });
-      if (updated) {
-        setSelectedVendor(updated);
-        fetchVendors();
+      const res = await adminApi.vendors.update(selectedVendor.id, { onboardingStage: stage });
+      if (res.success && res.vendor) {
+        setSelectedVendor(res.vendor);
+        await fetchVendors();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("ricoz_admin_refresh"));
+        }
       }
     } catch (err) {
       console.error("Update stage error:", err);
     }
   };
 
-  const handleSaveNotes = () => {
+  const handleSaveNotes = async () => {
     if (!selectedVendor) return;
     try {
       setSaving(true);
-      const updated = updateVendor(selectedVendor.id, { notes: notesDraft });
-      if (updated) setSelectedVendor(updated);
-      fetchVendors();
+      const res = await adminApi.vendors.update(selectedVendor.id, { notes: notesDraft });
+      if (res.success && res.vendor) {
+        setSelectedVendor(res.vendor);
+      }
+      await fetchVendors();
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDeleteVendor = (vendorId: string) => {
+  const handleDeleteVendor = async (vendorId: string) => {
     if (!confirm("Are you sure you want to delete this vendor partner?")) return;
-    deleteVendor(vendorId);
-    setSelectedVendor(null);
-    fetchVendors();
+    try {
+      const res = await adminApi.vendors.delete(vendorId);
+      if (res.success) {
+        setSelectedVendor(null);
+        await fetchVendors();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("ricoz_admin_refresh"));
+        }
+      } else {
+        alert(res.error || "Failed to delete vendor");
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to delete vendor");
+    }
   };
 
   const verificationBadges: Record<VendorVerificationStatus, { label: string; color: string }> = {

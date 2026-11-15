@@ -14,7 +14,7 @@ export async function GET(
     const { id } = await params;
     const db = getDb();
 
-    const client = db.prepare(`
+    const client = await db.prepare(`
       SELECT 
         c.id, c.name, c.industry, c.contact_name, c.contact_email, c.phone, c.company_size,
         c.onboarding_stage, c.assigned_owner_id, c.notes, c.next_follow_up, c.created_at, c.updated_at,
@@ -28,7 +28,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: "Client not found" }, { status: 404 });
     }
 
-    const checklist = db.prepare(`
+    const checklist = await db.prepare(`
       SELECT 
         coi.id, coi.client_id, coi.title, coi.category, coi.is_completed, coi.completed_at,
         u.full_name as completed_by_user_name
@@ -61,23 +61,22 @@ export async function PATCH(
     const { id } = await params;
     const db = getDb();
 
-    const existing = db.prepare("SELECT * FROM clients WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    const existing = (await db.prepare("SELECT * FROM clients WHERE id = ?").get(id)) as Record<string, unknown> | null;
     if (!existing) {
       return NextResponse.json({ success: false, error: "Client not found" }, { status: 404 });
     }
 
     const body = await req.json();
-    const now = new Date().toISOString();
 
     const stage = body.onboardingStage !== undefined ? body.onboardingStage : existing.onboarding_stage;
     const notes = body.notes !== undefined ? body.notes : existing.notes;
     const assignedOwnerId = body.assignedOwnerId !== undefined ? (body.assignedOwnerId ? String(body.assignedOwnerId) : null) : (existing.assigned_owner_id ? String(existing.assigned_owner_id) : null);
     const nextFollowUp = body.nextFollowUp !== undefined ? (body.nextFollowUp ? String(body.nextFollowUp) : null) : (existing.next_follow_up ? String(existing.next_follow_up) : null);
-    const phone = body.phone !== undefined ? String(body.phone) : String(existing.phone);
+    const phone = body.phone !== undefined ? String(body.phone) : String(existing.phone || "");
     const contactName = body.contactName !== undefined ? String(body.contactName) : String(existing.contact_name);
     const contactEmail = body.contactEmail !== undefined ? String(body.contactEmail) : String(existing.contact_email);
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE clients SET
         onboarding_stage = ?,
         notes = ?,
@@ -86,14 +85,14 @@ export async function PATCH(
         phone = ?,
         contact_name = ?,
         contact_email = ?,
-        updated_at = ?
+        updated_at = NOW()
       WHERE id = ?
-    `).run(stage, notes, assignedOwnerId, nextFollowUp, phone, contactName, contactEmail, now, id);
+    `).run(stage, notes, assignedOwnerId, nextFollowUp, phone, contactName, contactEmail, id);
 
     // If checklist item toggle was sent
     if (body.toggleChecklistId !== undefined) {
-      const isCompleted = body.isCompleted ? 1 : 0;
-      db.prepare(`
+      const isCompleted = Boolean(body.isCompleted);
+      await db.prepare(`
         UPDATE client_onboarding_items SET
           is_completed = ?,
           completed_at = ?,
@@ -101,14 +100,14 @@ export async function PATCH(
         WHERE id = ? AND client_id = ?
       `).run(
         isCompleted,
-        isCompleted ? now : null,
+        isCompleted ? new Date().toISOString() : null,
         isCompleted ? user.id : null,
         body.toggleChecklistId,
         id
       );
     }
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: user,
       action: "CLIENT_UPDATED",
       entityType: "client",
@@ -136,14 +135,14 @@ export async function DELETE(
     const { id } = await params;
     const db = getDb();
 
-    const existing = db.prepare("SELECT name FROM clients WHERE id = ?").get(id) as { name: string } | undefined;
+    const existing = (await db.prepare("SELECT name FROM clients WHERE id = ?").get(id)) as { name: string } | null;
     if (!existing) {
       return NextResponse.json({ success: false, error: "Client not found" }, { status: 404 });
     }
 
-    db.prepare("DELETE FROM clients WHERE id = ?").run(id);
+    await db.prepare("DELETE FROM clients WHERE id = ?").run(id);
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: user,
       action: "CLIENT_DELETED",
       entityType: "client",

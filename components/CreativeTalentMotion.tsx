@@ -114,7 +114,7 @@ const ROW_TWO_TALENT: TalentProfile[] = [
 function TalentCard({ talent, isFeatured = false }: { talent: TalentProfile; isFeatured?: boolean }) {
   return (
     <Link
-      href={`/designers/${talent.id}`}
+      href={`/talent/${talent.id}`}
       className={`group block relative select-none rounded-xl transition-all duration-300 ${
         isFeatured
           ? "w-[340px] sm:w-[380px] p-6 sm:p-7 bg-surface-elevated/95 border-2 border-accent/40 shadow-glow"
@@ -307,7 +307,7 @@ export function CreativeTalentMotion() {
                 ))}
               </div>
               <Link
-                href="/designers/des-1"
+                href="/talent/des-1"
                 className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-md bg-accent text-background font-mono text-xs font-semibold hover:bg-accent-hover transition-colors shrink-0"
               >
                 <span>View Full Studio Case Studies</span>

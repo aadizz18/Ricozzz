@@ -10,6 +10,12 @@ import {
   FileCheck,
   ArrowRight
 } from "lucide-react";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "For Companies — Enterprise Rebranding Without Agency Bloat",
+  description: "Direct partnership with vetted Creative Directors, studio principals, and specialized design pods for high-stakes corporate transformations.",
+};
 
 export default function ForCompaniesPage() {
   const companyBenefits = [

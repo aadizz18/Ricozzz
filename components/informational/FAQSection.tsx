@@ -3,75 +3,115 @@
 import React, { useState, useEffect } from "react";
 import { ChevronDown, Hash } from "lucide-react";
 import { EditorialStar, EditorialBadge } from "@/components/ui/EditorialDecorations";
+import { adminApi } from "@/lib/admin/apiClient";
 
 interface FAQItem {
   id: string;
   slug: string;
   question: string;
   answer: string;
+  category?: string;
 }
 
-export const FAQSection: React.FC = () => {
-  const faqs: FAQItem[] = [
-    {
-      id: "faq-what-is-ricoz",
-      slug: "what-is-ricoz",
-      question: "What is RICOZ?",
-      answer:
-        "RICOZ is a curated creative services platform designed to help visionary businesses discover, evaluate, and connect directly with senior creative talent for project mandates.",
-    },
-    {
-      id: "faq-talent-types",
-      slug: "talent-types",
-      question: "What type of creative talent can I find on RICOZ?",
-      answer:
-        "RICOZ supports senior creative specialists across 19 critical disciplines, including Creative Directors, Brand Strategists, Brand Identity Designers, UI/UX Architects, Packaging Designers, Motion Designers, and Typography Specialists.",
-    },
-    {
-      id: "faq-how-it-works",
-      slug: "how-matching-works",
-      question: "How does RICOZ help me find talent?",
-      answer:
-        "You can explore relevant profiles, review their documented case studies, and use multi-dimensional matching based on industry background, aesthetic craft, and enterprise scale to build a focused shortlist.",
-    },
-    {
-      id: "faq-start-project",
-      slug: "start-project",
-      question: "How do I start a project?",
-      answer:
-        "Start by sharing your project requirements through the RICOZ onboarding flow or scoping estimator. From there, you can review matching specialists and proceed through structured milestone sprints.",
-    },
-    {
-      id: "faq-shortlisting",
-      slug: "shortlisting-squads",
-      question: "Can I shortlist multiple creative professionals?",
-      answer:
-        "Yes. The platform's shortlist workflow allows you to organize multiple specialists, compare portfolios side-by-side, and assemble multidisciplinary creative pods before kickoff.",
-    },
-    {
-      id: "faq-suitability",
-      slug: "business-suitability",
-      question: "Is RICOZ suitable for businesses and startups?",
-      answer:
-        "Yes. RICOZ is designed for high-growth venture-backed startups, scale-ups, and enterprise marketing teams requiring senior creative expertise for high-stakes rebrands, product launches, or digital design systems.",
-    },
-    {
-      id: "faq-contracts-nda",
-      slug: "contracts-nda-safeguards",
-      question: "How are confidential briefs and intellectual property protected?",
-      answer:
-        "All client engagements are governed by standardized mutual non-disclosure agreements prior to sensitive brief sharing. Upon completion of milestone deliverables, 100% full intellectual property rights transfer to your company.",
-    },
-    {
-      id: "faq-rates-pricing",
-      slug: "pricing-hourly-rates",
-      question: "How are rates and project budgets determined?",
-      answer:
-        "Specialists on RICOZ specify transparent hourly rates (typically $140–$180/hr based on senior studio leadership). Projects can be structured as focused weekly sprints or milestone-based fixed budgets with zero hidden agency overhead.",
-    },
-  ];
+const DEFAULT_FAQS: FAQItem[] = [
+  {
+    id: "faq-what-is-ricoz",
+    slug: "what-is-ricoz",
+    question: "What is RICOZ?",
+    answer:
+      "RICOZ is a curated creative services platform designed to help visionary businesses discover, evaluate, and connect directly with senior creative talent for project mandates.",
+    category: "general",
+  },
+  {
+    id: "faq-talent-types",
+    slug: "talent-types",
+    question: "What type of creative talent can I find on RICOZ?",
+    answer:
+      "RICOZ supports senior creative specialists across 19 critical disciplines, including Creative Directors, Brand Strategists, Brand Identity Designers, UI/UX Architects, Packaging Designers, Motion Designers, and Typography Specialists.",
+    category: "talent",
+  },
+  {
+    id: "faq-how-it-works",
+    slug: "how-matching-works",
+    question: "How does RICOZ help me find talent?",
+    answer:
+      "You can explore relevant profiles, review their documented case studies, and use multi-dimensional matching based on industry background, aesthetic craft, and enterprise scale to build a focused shortlist.",
+    category: "talent",
+  },
+  {
+    id: "faq-start-project",
+    slug: "start-project",
+    question: "How do I start a project?",
+    answer:
+      "Start by sharing your project requirements through the RICOZ onboarding flow or scoping estimator. From there, you can review matching specialists and proceed through structured milestone sprints.",
+    category: "process",
+  },
+  {
+    id: "faq-shortlisting",
+    slug: "shortlisting-squads",
+    question: "Can I shortlist multiple creative professionals?",
+    answer:
+      "Yes. The platform's shortlist workflow allows you to organize multiple specialists, compare portfolios side-by-side, and assemble multidisciplinary creative pods before kickoff.",
+    category: "process",
+  },
+  {
+    id: "faq-suitability",
+    slug: "business-suitability",
+    question: "Is RICOZ suitable for businesses and startups?",
+    answer:
+      "Yes. RICOZ is designed for high-growth venture-backed startups, scale-ups, and enterprise marketing teams requiring senior creative expertise for high-stakes rebrands, product launches, or digital design systems.",
+    category: "general",
+  },
+  {
+    id: "faq-contracts-nda",
+    slug: "contracts-nda-safeguards",
+    question: "How are confidential briefs and intellectual property protected?",
+    answer:
+      "All client engagements are governed by standardized mutual non-disclosure agreements prior to sensitive brief sharing. Upon completion of milestone deliverables, 100% full intellectual property rights transfer to your company.",
+    category: "legal",
+  },
+  {
+    id: "faq-rates-pricing",
+    slug: "pricing-hourly-rates",
+    question: "How are rates and project budgets determined?",
+    answer:
+      "Specialists on RICOZ specify transparent hourly rates (typically $140–$180/hr based on senior studio leadership). Projects can be structured as focused weekly sprints or milestone-based fixed budgets with zero hidden agency overhead.",
+    category: "pricing",
+  },
+];
 
-  const [openId, setOpenId] = useState<string | null>(faqs[0].id);
+export const FAQSection: React.FC = () => {
+  const [faqs, setFaqs] = useState<FAQItem[]>(DEFAULT_FAQS);
+  const [activeCategory, setActiveCategory] = useState<string>("all");
+  const [openId, setOpenId] = useState<string | null>(DEFAULT_FAQS[0].id);
+
+  useEffect(() => {
+    let isMounted = true;
+    adminApi.public
+      .getFaqs()
+      .then((res) => {
+        if (!isMounted || !res.success || !res.faqs || res.faqs.length === 0) return;
+        const mapped: FAQItem[] = res.faqs.map((f: any) => ({
+          id: f.id,
+          slug: f.slug || f.id,
+          question: f.question,
+          answer: f.answer,
+          category: f.category || "general",
+        }));
+        setFaqs(mapped);
+      })
+      .catch(() => {
+        // Fallback to DEFAULT_FAQS
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const categories = ["all", ...Array.from(new Set(faqs.map((f) => f.category || "general")))];
+  const displayedFaqs =
+    activeCategory === "all" ? faqs : faqs.filter((f) => (f.category || "general") === activeCategory);
 
   useEffect(() => {
     const handleHash = () => {
@@ -101,7 +141,7 @@ export const FAQSection: React.FC = () => {
     <section id="faq" className="py-20 sm:py-28 bg-[#FBF6F0] border-b border-[#E6D8CF] relative">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* HEADER */}
-        <div className="text-center mb-16">
+        <div className="text-center mb-12 sm:mb-16">
           <div className="mb-3">
             <EditorialBadge variant="burgundy">
               COMMON INQUIRIES & STANDARDS
@@ -115,11 +155,30 @@ export const FAQSection: React.FC = () => {
           <p className="mt-4 text-base sm:text-lg text-[#76665F] leading-relaxed font-sans font-normal">
             Everything you need to know about the platform, talent curation, contractual safeguards, and project onboarding.
           </p>
+
+          {/* Category Filter Pills (if multiple categories present) */}
+          {categories.length > 2 && (
+            <div className="flex flex-wrap items-center justify-center gap-2 mt-6">
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat)}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-sans font-semibold capitalize transition-all ${
+                    activeCategory === cat
+                      ? "bg-[#541719] text-[#FFF9F3] shadow-burgundy"
+                      : "bg-white text-[#76665F] border border-[#E6D8CF] hover:border-[#C7A99A]"
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ACCORDION CONTAINER */}
         <div className="space-y-3.5" role="region" aria-label="Frequently Asked Questions list">
-          {faqs.map((faq) => {
+          {displayedFaqs.map((faq) => {
             const isOpen = openId === faq.id;
             return (
               <div
@@ -157,17 +216,19 @@ export const FAQSection: React.FC = () => {
                 {isOpen && (
                   <div
                     id={`faq-answer-${faq.id}`}
-                    className="px-6 pb-6 pt-1 text-sm sm:text-base text-[#76665F] leading-relaxed border-t border-[#E6D8CF] animate-in fade-in-50 duration-200 font-sans"
+                    className="px-6 pb-6 pt-1 text-sm sm:text-base text-[#76665F] leading-relaxed border-t border-[#E6D8CF] animate-in fade-in-50 duration-200 font-sans whitespace-pre-line"
                   >
                     <p>{faq.answer}</p>
                     <div className="mt-3 pt-3 border-t border-[#E6D8CF] flex items-center justify-between text-xs text-[#9E8E87] font-sans">
-                      <span>URL Fragment: #{faq.id}</span>
+                      <span>Ref: #{faq.id}</span>
                       <a
                         href={`#${faq.id}`}
                         className="text-[#541719] hover:underline flex items-center gap-1 font-semibold"
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigator.clipboard?.writeText(window.location.origin + window.location.pathname + "#" + faq.id);
+                          if (typeof window !== "undefined") {
+                            navigator.clipboard?.writeText(window.location.origin + window.location.pathname + "#" + faq.id);
+                          }
                         }}
                         title="Copy direct link to this FAQ"
                       >

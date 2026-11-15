@@ -3,9 +3,11 @@
  */
 
 import { SOP, Department, AdminUser } from "@/lib/admin/types";
-import { getStorageItem, setStorageItem, STORAGE_KEYS } from "./storage";
+import { getStorageItem, setStorageItem, STORAGE_KEYS, isBrowser } from "./storage";
 import { DEFAULT_SOPS, DEFAULT_DEPARTMENTS, DEFAULT_USERS } from "./seedData";
 import { logAuditEvent } from "./audit";
+
+let sopsSyncing = false;
 
 export function getSOPs(filters?: {
   departmentId?: string;
@@ -13,6 +15,26 @@ export function getSOPs(filters?: {
   status?: string;
   search?: string;
 }): SOP[] {
+  // Trigger background server sync
+  if (isBrowser() && !sopsSyncing) {
+    sopsSyncing = true;
+    const query = new URLSearchParams();
+    if (filters?.departmentId) query.set("departmentId", filters.departmentId);
+    if (filters?.search) query.set("search", filters.search);
+
+    fetch(`/api/admin/sops?${query.toString()}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && Array.isArray(data.sops) && data.sops.length > 0) {
+          setStorageItem(STORAGE_KEYS.SOPS, data.sops);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        sopsSyncing = false;
+      });
+  }
+
   let sops = getStorageItem<SOP[]>(STORAGE_KEYS.SOPS, DEFAULT_SOPS);
   const depts = getStorageItem<Department[]>(STORAGE_KEYS.DEPARTMENTS, DEFAULT_DEPARTMENTS);
   const users = getStorageItem<AdminUser[]>(STORAGE_KEYS.USERS, DEFAULT_USERS);
@@ -88,6 +110,28 @@ export function createSOP(data: Partial<SOP>): SOP {
 
   logAuditEvent("sop.create", "sop", newSop.id, `Authored SOP "${newSop.title}" (${newSop.version})`);
 
+  if (isBrowser()) {
+    fetch("/api/admin/sops", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: newSop.title,
+        departmentId: newSop.departmentId,
+        category: newSop.category,
+        summary: newSop.summary,
+        contentMarkdown: newSop.contentMarkdown,
+        version: newSop.version,
+      }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((resData) => {
+        if (resData?.sopId) {
+          newSop.id = resData.sopId;
+        }
+      })
+      .catch(() => {});
+  }
+
   return newSop;
 }
 
@@ -107,6 +151,14 @@ export function updateSOP(id: string, data: Partial<SOP>): SOP | null {
 
   logAuditEvent("sop.update", "sop", id, `Updated SOP "${updated.title}"`);
 
+  if (isBrowser()) {
+    fetch(`/api/admin/sops/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).catch(() => {});
+  }
+
   return updated;
 }
 
@@ -117,5 +169,12 @@ export function deleteSOP(id: string): boolean {
   setStorageItem(STORAGE_KEYS.SOPS, filtered);
 
   logAuditEvent("sop.delete", "sop", id, `Deleted SOP "${target?.title || id}"`);
+
+  if (isBrowser()) {
+    fetch(`/api/admin/sops/${id}`, {
+      method: "DELETE",
+    }).catch(() => {});
+  }
+
   return true;
 }

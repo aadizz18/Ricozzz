@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
       END, 
       st.created_at DESC`;
 
-    const tickets = db.prepare(query).all(...params);
+    const tickets = await db.prepare(query).all(...params);
 
     return NextResponse.json({
       success: true,
@@ -86,16 +86,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Customer name, email, category, subject, and description are required." }, { status: 400 });
     }
 
+    const categoryMap: Record<string, string> = {
+      "billing & escrow": "billing",
+      "billing": "billing",
+      "onboarding": "onboarding",
+      "client onboarding": "onboarding",
+      "talent matching": "talent_matching",
+      "talent_matching": "talent_matching",
+      "platform bug": "platform_bug",
+      "platform_bug": "platform_bug",
+      "service quality": "service_quality",
+      "service_quality": "service_quality",
+      "general": "general",
+      "general inquiry": "general",
+    };
+    const cleanCategory = categoryMap[category.toLowerCase().trim()] || category.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+
     const db = getDb();
     const now = new Date().toISOString();
-    const ticketId = `tkt-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`;
+    const ticketId = crypto.randomUUID();
 
     // Generate unique sequential reference
-    const countRow = db.prepare("SELECT count(*) as count FROM support_tickets").get() as { count: number };
-    const nextNum = (countRow?.count || 0) + 1;
+    const countRow = (await db.prepare("SELECT count(*) as count FROM support_tickets").get()) as { count: string | number } | undefined;
+    const nextNum = Number(countRow?.count || 0) + 1;
     const ticketRef = `REF-2026-${String(nextNum).padStart(3, "0")}`;
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO support_tickets (
         id, ticket_ref, client_id, customer_name, customer_email, category,
         subject, description, priority, status, assigned_user_id,
@@ -107,7 +123,7 @@ export async function POST(req: NextRequest) {
       clientId || null,
       customerName.trim(),
       customerEmail.trim(),
-      category,
+      cleanCategory,
       subject.trim(),
       description.trim(),
       priority || "medium",
@@ -116,7 +132,7 @@ export async function POST(req: NextRequest) {
       now
     );
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: user,
       action: "TICKET_CREATED",
       entityType: "support_ticket",
@@ -127,13 +143,13 @@ export async function POST(req: NextRequest) {
 
     if (priority === "critical") {
       // Trigger notification for Ops Lead
-      const opsAdmin = db.prepare("SELECT id FROM admin_users WHERE role = 'ops_admin' LIMIT 1").get() as { id: string } | undefined;
+      const opsAdmin = (await db.prepare("SELECT id FROM admin_users WHERE role = 'ops_admin' LIMIT 1").get()) as { id: string } | undefined;
       if (opsAdmin) {
-        db.prepare(`
+        await db.prepare(`
           INSERT INTO notifications (id, user_id, title, message, type, link, is_read, created_at)
-          VALUES (?, ?, 'Critical Support Incident', ?, 'ticket_escalated', ?, 0, ?)
+          VALUES (?, ?, 'Critical Support Incident', ?, 'ticket_escalated', ?, false, ?)
         `).run(
-          `ntf-${Date.now()}`,
+          crypto.randomUUID(),
           opsAdmin.id,
           `Critical Ticket ${ticketRef} reported: "${subject}"`,
           `/admin/support?ref=${ticketRef}`,

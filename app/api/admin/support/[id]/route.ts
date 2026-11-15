@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/admin/auth";
-import { hasPermission } from "@/lib/admin/permissions";
 import { getDb } from "@/lib/admin/db";
 import { recordAuditLog } from "@/lib/admin/audit";
 
@@ -15,7 +14,7 @@ export async function GET(
     const { id } = await params;
     const db = getDb();
 
-    const ticket = db.prepare(`
+    const ticket = await db.prepare(`
       SELECT 
         st.id, st.ticket_ref, st.client_id, st.customer_name, st.customer_email,
         st.category, st.subject, st.description, st.priority, st.status,
@@ -32,7 +31,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: "Ticket not found" }, { status: 404 });
     }
 
-    const responses = db.prepare(`
+    const responses = await db.prepare(`
       SELECT 
         tr.id, tr.ticket_id, tr.user_id, tr.message, tr.is_internal_note, tr.created_at,
         u.full_name as user_name, u.role as user_role
@@ -65,7 +64,7 @@ export async function PATCH(
     const { id } = await params;
     const db = getDb();
 
-    const existing = db.prepare("SELECT * FROM support_tickets WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    const existing = (await db.prepare("SELECT * FROM support_tickets WHERE id = ?").get(id)) as Record<string, unknown> | undefined;
     if (!existing) {
       return NextResponse.json({ success: false, error: "Ticket not found" }, { status: 404 });
     }
@@ -84,7 +83,7 @@ export async function PATCH(
       ? null
       : existing.resolved_at ? String(existing.resolved_at) : null;
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE support_tickets SET
         status = ?,
         priority = ?,
@@ -95,7 +94,7 @@ export async function PATCH(
       WHERE id = ?
     `).run(newStatus, newPriority, newAssignedUserId, resolutionNotes, resolvedAt, now, id);
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: user,
       action: "TICKET_UPDATED",
       entityType: "support_ticket",

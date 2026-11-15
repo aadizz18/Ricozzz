@@ -21,16 +21,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { Task, TaskPriority, TaskStatus, Department, AdminUser } from "@/lib/admin/types";
-import {
-  getTasks,
-  getTaskById,
-  createTask,
-  updateTask,
-  deleteTask,
-  addTaskComment,
-  getDepartments,
-  getDepartmentMembers,
-} from "@/lib/demo";
+import { adminApi } from "@/lib/admin/apiClient";
 
 export default function AdminTasksPage() {
   const searchParams = useSearchParams();
@@ -61,7 +52,7 @@ export default function AdminTasksPage() {
   // New Task Form State
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
-  const [newDept, setNewDept] = useState("dept-ops");
+  const [newDept, setNewDept] = useState("");
   const [newAssignee, setNewAssignee] = useState("");
   const [newPriority, setNewPriority] = useState<TaskPriority>("medium");
   const [newDueDate, setNewDueDate] = useState(new Date(Date.now() + 3 * 86400000).toISOString().split("T")[0]);
@@ -69,35 +60,44 @@ export default function AdminTasksPage() {
   const [newEscalated, setNewEscalated] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const fetchTasks = () => {
+  const fetchTasks = async () => {
     try {
       setLoading(true);
-      const data = getTasks({
+      const res = await adminApi.tasks.list({
         departmentId: departmentId || undefined,
         status: status || undefined,
         priority: priority || undefined,
         search: search || undefined,
       });
-      setTasks(data);
-      if (initialId && !selectedTask) {
-        const found = data.find((t: Task) => t.id === initialId);
-        if (found) openTaskDetail(found);
+      if (res.success && Array.isArray(res.tasks)) {
+        setTasks(res.tasks);
+        if (initialId && !selectedTask) {
+          const found = res.tasks.find((t: Task) => t.id === initialId);
+          if (found) openTaskDetail(found);
+        }
       }
     } catch (err) {
-      console.error("Error fetching demo tasks:", err);
+      console.error("Error fetching live tasks:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchMetadata = () => {
+  const fetchMetadata = async () => {
     try {
-      const d = getDepartments();
-      const t = getDepartmentMembers();
-      setDepartments(d);
-      setTeamMembers(t as any);
-    } catch {
-      // Non-blocking
+      const [deptRes, teamRes] = await Promise.allSettled([
+        adminApi.departments.list(),
+        adminApi.team.listUsers(),
+      ]);
+      if (deptRes.status === "fulfilled" && deptRes.value.success && deptRes.value.departments?.length > 0) {
+        setDepartments(deptRes.value.departments);
+        setNewDept(deptRes.value.departments[0].id);
+      }
+      if (teamRes.status === "fulfilled" && teamRes.value.success && teamRes.value.users) {
+        setTeamMembers(teamRes.value.users);
+      }
+    } catch (err) {
+      console.error("Tasks metadata load error:", err);
     }
   };
 
@@ -109,90 +109,111 @@ export default function AdminTasksPage() {
     fetchTasks();
   }, [departmentId, status, priority, search]);
 
-  const openTaskDetail = (task: Task) => {
+  const openTaskDetail = async (task: Task) => {
     setSelectedTask(task);
     try {
-      const res = getTaskById(task.id);
-      if (res.task) {
+      const res = await adminApi.tasks.get(task.id);
+      if (res.success && res.task) {
         setSelectedTask(res.task);
         setTaskComments((res.comments || []) as any);
       }
-    } catch {
-      // fallback
+    } catch (err) {
+      console.error("Error loading task details:", err);
     }
   };
 
-  const handleCreateTask = (e: React.FormEvent) => {
+  const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
     setActionLoading(true);
 
     try {
-      createTask({
-        title: newTitle,
-        description: newDesc,
+      const res = await adminApi.tasks.create({
+        title: newTitle.trim(),
+        description: newDesc.trim(),
         departmentId: newDept,
         assigneeId: newAssignee || null,
         priority: newPriority,
         dueDate: newDueDate,
-        blockerNote: newBlocker || null,
+        blockerNote: newBlocker.trim() || null,
         isEscalated: newEscalated,
       });
 
-      setCreateModalOpen(false);
-      setNewTitle("");
-      setNewDesc("");
-      setNewBlocker("");
-      setNewEscalated(false);
-      fetchTasks();
-    } catch {
-      setFormError("Failed to create task in demo mode");
+      if (res.success) {
+        setCreateModalOpen(false);
+        setNewTitle("");
+        setNewDesc("");
+        setNewBlocker("");
+        setNewEscalated(false);
+        await fetchTasks();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("ricoz_admin_refresh"));
+        }
+      } else {
+        setFormError(res.error || "Failed to create task");
+      }
+    } catch (err: any) {
+      setFormError(err.message || "Failed to create task");
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleUpdateTaskStatus = (taskId: string, newStatus: TaskStatus) => {
+  const handleUpdateTaskStatus = async (taskId: string, newStatus: TaskStatus) => {
     try {
-      updateTask(taskId, { status: newStatus });
-      setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
-      );
-      if (selectedTask && selectedTask.id === taskId) {
-        setSelectedTask((prev) => (prev ? { ...prev, status: newStatus } : null));
+      const res = await adminApi.tasks.update(taskId, { status: newStatus });
+      if (res.success) {
+        setTasks((prev) =>
+          prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
+        );
+        if (selectedTask && selectedTask.id === taskId) {
+          setSelectedTask((prev) => (prev ? { ...prev, status: newStatus } : null));
+        }
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("ricoz_admin_refresh"));
+        }
       }
     } catch (err) {
       console.error("Status update error:", err);
     }
   };
 
-  const handleAddComment = (e: React.FormEvent) => {
+  const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTask || !newComment.trim()) return;
 
     try {
       setActionLoading(true);
-      addTaskComment(selectedTask.id, newComment, isBlockerComment);
-      setNewComment("");
-      setIsBlockerComment(false);
-      openTaskDetail(selectedTask);
-      fetchTasks();
-    } catch {
-      // Non-blocking
+      const res = await adminApi.tasks.addComment(selectedTask.id, newComment.trim(), isBlockerComment);
+      if (res.success) {
+        setNewComment("");
+        setIsBlockerComment(false);
+        await openTaskDetail(selectedTask);
+        await fetchTasks();
+      }
+    } catch (err) {
+      console.error("Comment error:", err);
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleDeleteTask = (taskId: string) => {
+  const handleDeleteTask = async (taskId: string) => {
     if (!confirm("Are you sure you want to delete this task? This action cannot be undone.")) return;
 
     try {
-      deleteTask(taskId);
-      setSelectedTask(null);
-      fetchTasks();
-    } catch {
-      alert("Delete failed in demo mode");
+      const res = await adminApi.tasks.delete(taskId);
+      if (res.success) {
+        setSelectedTask(null);
+        await fetchTasks();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("ricoz_admin_refresh"));
+        }
+      } else {
+        alert(res.error || "Failed to delete task");
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to delete task");
     }
   };
 

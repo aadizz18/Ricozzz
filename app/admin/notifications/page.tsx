@@ -14,17 +14,17 @@ import {
   Handshake,
   Trash2,
 } from "lucide-react";
-import { getNotifications, markNotificationAsRead, markAllNotificationsAsRead, deleteNotification } from "@/lib/demo";
+import { adminApi } from "@/lib/admin/apiClient";
 
 export default function AdminNotificationsPage() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchNotifications = () => {
+  const fetchNotifications = async () => {
     try {
       setLoading(true);
-      const data = getNotifications();
-      setNotifications(data);
+      const res = await adminApi.notifications.list();
+      setNotifications(res.notifications || []);
     } catch (err) {
       console.error("Notifications fetch error:", err);
     } finally {
@@ -36,19 +36,34 @@ export default function AdminNotificationsPage() {
     fetchNotifications();
   }, []);
 
-  const handleMarkAllRead = () => {
-    markAllNotificationsAsRead();
-    fetchNotifications();
+  const handleMarkAllRead = async () => {
+    try {
+      await adminApi.notifications.markAllRead();
+      await fetchNotifications();
+      window.dispatchEvent(new Event("ricoz_admin_refresh"));
+    } catch (err) {
+      console.error("Mark all read error:", err);
+    }
   };
 
-  const handleMarkSingleRead = (id: string) => {
-    markNotificationAsRead(id);
-    fetchNotifications();
+  const handleMarkSingleRead = async (id: string) => {
+    try {
+      await adminApi.notifications.markRead(id);
+      await fetchNotifications();
+      window.dispatchEvent(new Event("ricoz_admin_refresh"));
+    } catch (err) {
+      console.error("Mark read error:", err);
+    }
   };
 
-  const handleDeleteNotification = (id: string) => {
-    deleteNotification(id);
-    fetchNotifications();
+  const handleDeleteNotification = async (id: string) => {
+    try {
+      await adminApi.notifications.delete(id);
+      await fetchNotifications();
+      window.dispatchEvent(new Event("ricoz_admin_refresh"));
+    } catch (err) {
+      console.error("Delete notification error:", err);
+    }
   };
 
   const typeIcons: Record<string, any> = {

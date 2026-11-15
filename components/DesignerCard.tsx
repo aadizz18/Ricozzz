@@ -115,7 +115,7 @@ export const DesignerCard: React.FC<DesignerCardProps> = ({
 
               <div className="min-w-0 flex-1">
                 <Link
-                  href={`/designers/${designer.id}`}
+                  href={`/talent/${designer.id}`}
                   className="block font-serif font-bold text-lg text-[#38241F] hover:text-[#541719] transition-colors truncate"
                 >
                   {designer.name}
@@ -166,7 +166,7 @@ export const DesignerCard: React.FC<DesignerCardProps> = ({
         </span>
 
         <Link
-          href={`/designers/${designer.id}`}
+          href={`/talent/${designer.id}`}
           className="inline-flex items-center gap-1.5 text-xs font-sans font-bold text-[#541719] hover:underline"
         >
           <span>View Profile</span>

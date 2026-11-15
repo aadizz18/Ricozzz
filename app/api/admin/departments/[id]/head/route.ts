@@ -16,14 +16,14 @@ export async function POST(
     const { headUserId } = body;
 
     const db = getDb();
-    const dept = db.prepare("SELECT * FROM departments WHERE id = ?").get(departmentId) as Record<string, unknown> | undefined;
+    const dept = (await db.prepare("SELECT * FROM departments WHERE id = ?").get(departmentId)) as Record<string, unknown> | undefined;
     if (!dept) {
       return NextResponse.json({ success: false, error: "Department not found." }, { status: 404 });
     }
 
     let headName = "None";
     if (headUserId) {
-      const targetUser = db.prepare("SELECT id, full_name, email, status, role FROM admin_users WHERE id = ?").get(headUserId) as Record<string, unknown> | undefined;
+      const targetUser = (await db.prepare("SELECT id, full_name, email, status, role FROM admin_users WHERE id = ?").get(headUserId)) as Record<string, unknown> | undefined;
       if (!targetUser) {
         return NextResponse.json({ success: false, error: "Designated department head user not found." }, { status: 404 });
       }
@@ -34,17 +34,17 @@ export async function POST(
 
       // Upsert department membership
       const now = new Date().toISOString();
-      db.prepare(`
-        INSERT INTO admin_department_members (id, admin_user_id, department_id, membership_role, is_primary, created_at)
-        VALUES (?, ?, ?, 'head', 1, ?)
+      await db.prepare(`
+        INSERT INTO admin_department_members (admin_user_id, department_id, membership_role, is_primary, created_at)
+        VALUES (?, ?, 'head', true, ?)
         ON CONFLICT(admin_user_id, department_id) DO UPDATE SET
           membership_role = 'head'
-      `).run(`dmem-${headUserId}-${departmentId}`, headUserId, departmentId, now);
+      `).run(headUserId, departmentId, now);
     }
 
-    db.prepare("UPDATE departments SET head_user_id = ? WHERE id = ?").run(headUserId || null, departmentId);
+    await db.prepare("UPDATE departments SET head_user_id = ? WHERE id = ?").run(headUserId || null, departmentId);
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: auth.user,
       action: "DEPARTMENT_HEAD_ASSIGNED",
       entityType: "department",

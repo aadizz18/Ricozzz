@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
 
     query += " ORDER BY s.title ASC";
 
-    const sops = db.prepare(query).all(...params);
+    const sops = await db.prepare(query).all(...params);
 
     return NextResponse.json({
       success: true,
@@ -67,11 +67,11 @@ export async function POST(req: NextRequest) {
     }
 
     const db = getDb();
-    const sopId = `sop-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`;
-    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    const sopId = crypto.randomUUID();
+    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") + "-" + Date.now().toString().slice(-4);
     const now = new Date().toISOString();
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO sops (
         id, title, slug, department_id, category, summary, content_markdown,
         version, status, owner_id, last_reviewed_at, created_at, updated_at
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
       now
     );
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: user,
       action: "SOP_CREATED",
       entityType: "sop",

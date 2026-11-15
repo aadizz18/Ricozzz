@@ -3,10 +3,40 @@
  */
 
 import { Notification } from "@/lib/admin/types";
-import { getStorageItem, setStorageItem, STORAGE_KEYS } from "./storage";
+import { getStorageItem, setStorageItem, STORAGE_KEYS, isBrowser } from "./storage";
 import { DEFAULT_NOTIFICATIONS } from "./seedData";
 
+let notifsSyncing = false;
+
 export function getNotifications(unreadOnly = false): Notification[] {
+  // Trigger background server sync
+  if (isBrowser() && !notifsSyncing) {
+    notifsSyncing = true;
+    fetch("/api/admin/notifications")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && Array.isArray(data.notifications)) {
+          const mapped = data.notifications.map((n: any) => ({
+            id: n.id,
+            userId: n.user_id,
+            title: n.title,
+            message: n.message,
+            type: n.type,
+            link: n.link,
+            isRead: Boolean(n.is_read),
+            createdAt: n.created_at,
+          }));
+          if (mapped.length > 0) {
+            setStorageItem(STORAGE_KEYS.NOTIFICATIONS, mapped);
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        notifsSyncing = false;
+      });
+  }
+
   let notifications = getStorageItem<Notification[]>(STORAGE_KEYS.NOTIFICATIONS, DEFAULT_NOTIFICATIONS);
 
   if (unreadOnly) {
@@ -26,6 +56,15 @@ export function markNotificationAsRead(id: string): boolean {
 
   notifications[idx].isRead = true;
   setStorageItem(STORAGE_KEYS.NOTIFICATIONS, notifications);
+
+  if (isBrowser()) {
+    fetch("/api/admin/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notificationId: id }),
+    }).catch(() => {});
+  }
+
   return true;
 }
 
@@ -33,6 +72,15 @@ export function markAllNotificationsAsRead(): boolean {
   const notifications = getStorageItem<Notification[]>(STORAGE_KEYS.NOTIFICATIONS, DEFAULT_NOTIFICATIONS);
   const updated = notifications.map((n) => ({ ...n, isRead: true }));
   setStorageItem(STORAGE_KEYS.NOTIFICATIONS, updated);
+
+  if (isBrowser()) {
+    fetch("/api/admin/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ markAll: true }),
+    }).catch(() => {});
+  }
+
   return true;
 }
 

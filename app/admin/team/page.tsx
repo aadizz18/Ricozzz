@@ -1,19 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import {
-  getUsers,
-  getDepartments,
-  getRoles,
-  getPermissions,
-  getUserOverrides,
-  createUser,
-  updateUser,
-  revokeUserSessions,
-  addOverride,
-  deleteOverride,
-  assignDepartmentHead,
-} from "@/lib/demo";
+import { adminApi } from "@/lib/admin/apiClient";
 import {
   Users2,
   Shield,
@@ -133,33 +121,41 @@ export default function AdminTeamPage() {
   const [reassignHeadDept, setReassignHeadDept] = useState<Department | null>(null);
   const [selectedHeadUserId, setSelectedHeadUserId] = useState("");
 
-  const fetchData = () => {
+  const fetchData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const uList = getUsers();
-      const dList = getDepartments();
-      const rList = getRoles();
-      const pList = getPermissions();
-      const oList = getUserOverrides();
+      const [usersRes, deptsRes, rolesRes, permsRes, overridesRes] = await Promise.all([
+        adminApi.team.listUsers(),
+        adminApi.departments.list(),
+        adminApi.team.listRoles(),
+        adminApi.team.listPermissions(),
+        adminApi.team.listOverrides(),
+      ]);
 
-      const mappedUsers: TeamMember[] = uList.map((u) => {
-        const r = rList.find((role) => role.slug === u.role);
-        const userOverrides = oList.filter((o) => o.adminUserId === u.id);
+      const uList = usersRes.users || [];
+      const dList = deptsRes.departments || [];
+      const rList = rolesRes.roles || [];
+      const pList = permsRes.permissions || [];
+      const oList = overridesRes.overrides || [];
+
+      const mappedUsers: TeamMember[] = uList.map((u: any) => {
+        const r = rList.find((role: any) => role.slug === u.role);
+        const userOverrides = oList.filter((o: any) => o.adminUserId === u.id);
         return {
           id: u.id,
           email: u.email,
-          fullName: u.fullName,
+          fullName: u.fullName || u.full_name,
           role: u.role,
-          roleName: r ? r.name : u.role,
-          hierarchyLevel: r ? r.hierarchyLevel : 13,
-          departmentId: u.departmentId,
-          departmentName: u.departmentName || "Unassigned",
+          roleName: r ? r.name : (u.roleName || u.role),
+          hierarchyLevel: r ? r.hierarchyLevel : (u.hierarchyLevel ?? 13),
+          departmentId: u.departmentId || u.department_id,
+          departmentName: u.departmentName || u.department_name || "Unassigned",
           status: u.status,
-          avatar: u.avatar,
-          lastLoginAt: u.lastLoginAt,
-          createdAt: u.createdAt,
-          activeSessionsCount: 1,
+          avatar: u.avatar || (u.fullName ? u.fullName.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase() : "U"),
+          lastLoginAt: u.lastLoginAt || u.last_login_at,
+          createdAt: u.createdAt || u.created_at,
+          activeSessionsCount: u.activeSessionsCount ?? 1,
           overridesCount: userOverrides.length,
         };
       });
@@ -169,8 +165,11 @@ export default function AdminTeamPage() {
       setRoles(rList as any);
       setPermissions(pList as any);
       setOverrides(oList as any);
-    } catch {
-      setError("Failed to load team and access governance data.");
+      if (dList.length > 0 && !newUserDept) {
+        setNewUserDept(dList[0].id);
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to load team and access governance data.");
     } finally {
       setLoading(false);
     }
@@ -180,93 +179,115 @@ export default function AdminTeamPage() {
     fetchData();
   }, []);
 
-  const handleCreateUser = (e: React.FormEvent) => {
+  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     try {
-      createUser({
+      const res = await adminApi.team.createUser({
         email: newUserEmail,
         fullName: newUserName,
-        role: newUserRole as any,
+        role: newUserRole,
         departmentId: newUserDept || null,
         password: newUserPassword,
       });
-      setSuccessMsg("Team member provisioned successfully (Demo Mode).");
+      if (!res.success) {
+        throw new Error((res as any).error || "Failed to create user");
+      }
+      setSuccessMsg("Team member provisioned successfully.");
       setShowAddUserModal(false);
       setNewUserEmail("");
       setNewUserName("");
       setNewUserPassword("");
-      fetchData();
-    } catch {
-      setError("Error while creating user.");
+      await fetchData();
+      window.dispatchEvent(new Event("ricoz_admin_refresh"));
+    } catch (err: any) {
+      setError(err.message || "Error while creating user.");
     }
   };
 
-  const handleToggleUserStatus = (user: TeamMember) => {
+  const handleToggleUserStatus = async (user: TeamMember) => {
     const nextStatus = user.status === "active" ? "suspended" : "active";
     if (!confirm(`Are you sure you want to ${nextStatus.toUpperCase()} ${user.fullName}?`)) return;
 
     try {
-      updateUser(user.id, { status: nextStatus });
+      const res = await adminApi.team.updateUser(user.id, { status: nextStatus });
+      if (!res.success) {
+        throw new Error((res as any).error || "Failed to update status");
+      }
       setSuccessMsg(`User status updated to ${nextStatus}.`);
-      fetchData();
-    } catch {
-      setError("Failed to change user status.");
+      await fetchData();
+    } catch (err: any) {
+      setError(err.message || "Failed to change user status.");
     }
   };
 
-  const handleRevokeAllSessions = (userId: string, userName: string) => {
+  const handleRevokeAllSessions = async (userId: string, userName: string) => {
     if (!confirm(`Revoke all active sessions for ${userName}?`)) return;
     try {
-      revokeUserSessions(userId);
-      setSuccessMsg(`All active sessions for ${userName} terminated (Demo Mode).`);
-      fetchData();
-    } catch {
-      setError("Error during session revocation.");
+      const res = await adminApi.team.revokeSessions(userId, "revoke_all");
+      if (!res.success) {
+        throw new Error((res as any).error || "Failed to revoke sessions");
+      }
+      setSuccessMsg(`All active sessions for ${userName} terminated.`);
+      await fetchData();
+    } catch (err: any) {
+      setError(err.message || "Error during session revocation.");
     }
   };
 
-  const handleCreateOverride = (e: React.FormEvent) => {
+  const handleCreateOverride = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     try {
-      addOverride({
-        userId: overrideUser,
-        permissionId: overridePerm,
+      const p = permissions.find((perm) => perm.id === overridePerm || perm.slug === overridePerm);
+      const permSlug = p ? p.slug : overridePerm;
+
+      const res = await adminApi.team.createOverride({
+        adminUserId: overrideUser,
+        permissionSlug: permSlug,
         effect: overrideEffect,
         reason: overrideReason,
         expiresAt: overrideExpires || null,
       });
-      setSuccessMsg("Permission override applied (Demo Mode).");
+      if (!res.success) {
+        throw new Error((res as any).error || "Failed to apply override");
+      }
+      setSuccessMsg("Permission override applied.");
       setShowOverrideModal(false);
       setOverrideReason("");
-      fetchData();
-    } catch {
-      setError("Error during override assignment.");
+      await fetchData();
+    } catch (err: any) {
+      setError(err.message || "Error during override assignment.");
     }
   };
 
-  const handleDeleteOverride = (overrideId: string) => {
+  const handleDeleteOverride = async (overrideId: string) => {
     if (!confirm("Are you sure you want to remove this permission override?")) return;
     try {
-      deleteOverride(overrideId);
+      const res = await adminApi.team.deleteOverride(overrideId);
+      if (!res.success) {
+        throw new Error((res as any).error || "Failed to remove override");
+      }
       setSuccessMsg("Override removed successfully.");
-      fetchData();
-    } catch {
-      setError("Failed to delete override.");
+      await fetchData();
+    } catch (err: any) {
+      setError(err.message || "Failed to delete override.");
     }
   };
 
-  const handleReassignHead = (e: React.FormEvent) => {
+  const handleReassignHead = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reassignHeadDept) return;
     try {
-      assignDepartmentHead(reassignHeadDept.id, selectedHeadUserId || null);
+      const res = await adminApi.departments.assignHead(reassignHeadDept.id, selectedHeadUserId || null);
+      if (!res.success) {
+        throw new Error((res as any).error || "Failed to update department head");
+      }
       setSuccessMsg("Department Head reassigned successfully.");
       setReassignHeadDept(null);
-      fetchData();
-    } catch {
-      setError("Failed to update department head.");
+      await fetchData();
+    } catch (err: any) {
+      setError(err.message || "Failed to update department head.");
     }
   };
 

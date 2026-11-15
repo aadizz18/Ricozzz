@@ -14,7 +14,7 @@ export async function GET(
     const { id } = await params;
     const db = getDb();
 
-    const task = db.prepare(`
+    const task = await db.prepare(`
       SELECT 
         t.id, t.title, t.description, t.department_id, t.assignee_id, t.creator_id,
         t.priority, t.status, t.blocker_note, t.is_escalated, t.due_date, t.completed_at,
@@ -33,7 +33,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: "Task not found" }, { status: 404 });
     }
 
-    const comments = db.prepare(`
+    const comments = await db.prepare(`
       SELECT 
         tc.id, tc.task_id, tc.user_id, tc.comment, tc.is_blocker_update, tc.created_at,
         u.full_name as user_name, u.avatar as user_avatar, u.role as user_role
@@ -66,7 +66,7 @@ export async function PATCH(
     const { id } = await params;
     const db = getDb();
 
-    const existing = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    const existing = (await db.prepare("SELECT * FROM tasks WHERE id = ?").get(id)) as Record<string, unknown> | null;
     if (!existing) {
       return NextResponse.json({ success: false, error: "Task not found" }, { status: 404 });
     }
@@ -77,24 +77,23 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const now = new Date().toISOString();
 
     const newStatus = String(body.status !== undefined ? body.status : existing.status);
     const newPriority = String(body.priority !== undefined ? body.priority : existing.priority);
     const newAssigneeId = body.assigneeId !== undefined ? (body.assigneeId ? String(body.assigneeId) : null) : (existing.assignee_id ? String(existing.assignee_id) : null);
     const newBlockerNote = body.blockerNote !== undefined ? (body.blockerNote ? String(body.blockerNote) : null) : (existing.blocker_note ? String(existing.blocker_note) : null);
-    const newIsEscalated = body.isEscalated !== undefined ? (body.isEscalated ? 1 : 0) : Number(existing.is_escalated || 0);
+    const newIsEscalated = body.isEscalated !== undefined ? Boolean(body.isEscalated) : Boolean(existing.is_escalated);
     const newDueDate = String(body.dueDate !== undefined ? body.dueDate : existing.due_date);
     const newTitle = String(body.title !== undefined ? body.title : existing.title);
     const newDescription = String(body.description !== undefined ? body.description : existing.description);
 
     const completedAt = newStatus === "completed" && existing.status !== "completed"
-      ? now
+      ? new Date().toISOString()
       : newStatus !== "completed"
       ? null
       : existing.completed_at ? String(existing.completed_at) : null;
 
-    const update = db.prepare(`
+    await db.prepare(`
       UPDATE tasks SET
         title = ?,
         description = ?,
@@ -105,11 +104,9 @@ export async function PATCH(
         is_escalated = ?,
         due_date = ?,
         completed_at = ?,
-        updated_at = ?
+        updated_at = NOW()
       WHERE id = ?
-    `);
-
-    update.run(
+    `).run(
       newTitle,
       newDescription,
       newPriority,
@@ -119,11 +116,10 @@ export async function PATCH(
       newIsEscalated,
       newDueDate,
       completedAt,
-      now,
       id
     );
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: user,
       action: "TASK_UPDATED",
       entityType: "task",
@@ -151,14 +147,14 @@ export async function DELETE(
     const { id } = await params;
     const db = getDb();
 
-    const existing = db.prepare("SELECT title FROM tasks WHERE id = ?").get(id) as { title: string } | undefined;
+    const existing = (await db.prepare("SELECT title FROM tasks WHERE id = ?").get(id)) as { title: string } | null;
     if (!existing) {
       return NextResponse.json({ success: false, error: "Task not found" }, { status: 404 });
     }
 
-    db.prepare("DELETE FROM tasks WHERE id = ?").run(id);
+    await db.prepare("DELETE FROM tasks WHERE id = ?").run(id);
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: user,
       action: "TASK_DELETED",
       entityType: "task",

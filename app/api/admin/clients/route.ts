@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
         c.id, c.name, c.industry, c.contact_name, c.contact_email, c.phone, c.company_size,
         c.onboarding_stage, c.assigned_owner_id, c.notes, c.next_follow_up, c.created_at, c.updated_at,
         u.full_name as assigned_owner_name,
-        (SELECT count(*) FROM client_onboarding_items coi WHERE coi.client_id = c.id AND coi.is_completed = 1) as completed_checklist_count,
+        (SELECT count(*) FROM client_onboarding_items coi WHERE coi.client_id = c.id AND coi.is_completed = true) as completed_checklist_count,
         (SELECT count(*) FROM client_onboarding_items coi WHERE coi.client_id = c.id) as total_checklist_count
       FROM clients c
       LEFT JOIN admin_users u ON c.assigned_owner_id = u.id
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
 
     query += " ORDER BY c.created_at DESC";
 
-    const clients = db.prepare(query).all(...params);
+    const clients = await db.prepare(query).all(...params);
 
     return NextResponse.json({
       success: true,
@@ -66,14 +66,13 @@ export async function POST(req: NextRequest) {
     }
 
     const db = getDb();
-    const clientId = `cli-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`;
-    const now = new Date().toISOString();
+    const clientId = crypto.randomUUID();
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO clients (
         id, name, industry, contact_name, contact_email, phone, company_size,
         onboarding_stage, assigned_owner_id, notes, next_follow_up, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
     `).run(
       clientId,
       name.trim(),
@@ -85,9 +84,7 @@ export async function POST(req: NextRequest) {
       stage || "inquiry",
       assignedOwnerId || user.id,
       notes || "",
-      nextFollowUp || null,
-      now,
-      now
+      nextFollowUp || null
     );
 
     // Seed standard onboarding checklist items for the client
@@ -99,25 +96,28 @@ export async function POST(req: NextRequest) {
       { title: "Creative Lead Introduction & Alignment", category: "Kickoff" },
     ];
 
-    const insertChecklist = db.prepare(`
-      INSERT INTO client_onboarding_items (id, client_id, title, category, is_completed, created_at)
-      VALUES (?, ?, ?, ?, 0, ?)
-    `);
+    for (const item of defaultChecklist) {
+      const itemId = crypto.randomUUID();
+      await db.prepare(`
+        INSERT INTO client_onboarding_items (id, client_id, title, category, is_completed, created_at)
+        VALUES (?, ?, ?, ?, false, NOW())
+      `).run(itemId, clientId, item.title, item.category);
+    }
 
-    defaultChecklist.forEach((item, idx) => {
-      insertChecklist.run(`chk-${clientId}-${idx}`, clientId, item.title, item.category, now);
-    });
-
-    recordAuditLog({
+    await recordAuditLog({
       actor: user,
       action: "CLIENT_CREATED",
       entityType: "client",
       entityId: clientId,
-      changeSummary: `Created enterprise client profile for ${name}`,
+      changeSummary: `Created client "${name}" (${stage || "inquiry"})`,
       ipAddress: req.headers.get("x-forwarded-for") || "127.0.0.1",
     });
 
-    return NextResponse.json({ success: true, clientId, message: "Client created successfully." });
+    return NextResponse.json({
+      success: true,
+      clientId,
+      message: "Client created successfully.",
+    });
   } catch (error) {
     console.error("Client POST error:", error);
     return NextResponse.json({ success: false, error: "Failed to create client" }, { status: 500 });

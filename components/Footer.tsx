@@ -92,24 +92,24 @@ export const Footer: React.FC = () => {
             </h4>
             <ul className="space-y-2 text-xs">
               <li>
-                <span className="hover:text-[#541719] cursor-pointer transition-colors">
+                <Link href="/terms" className="hover:text-[#541719] transition-colors">
                   Enterprise NDA & IP Transfer
-                </span>
+                </Link>
               </li>
               <li>
-                <span className="hover:text-[#541719] cursor-pointer transition-colors">
-                  Milestone Escrow Safeguards
-                </span>
+                <Link href="/terms" className="hover:text-[#541719] transition-colors">
+                  Milestone Sprint Safeguards
+                </Link>
               </li>
               <li>
-                <span className="hover:text-[#541719] cursor-pointer transition-colors">
+                <Link href="/how-it-works#vetting" className="hover:text-[#541719] transition-colors">
                   100% Talent Vetting Standards
-                </span>
+                </Link>
               </li>
               <li>
-                <span className="hover:text-[#541719] cursor-pointer transition-colors">
-                  Production SLA Guarantees
-                </span>
+                <Link href="/terms" className="hover:text-[#541719] transition-colors">
+                  Production SLA & IP Transfer
+                </Link>
               </li>
             </ul>
           </div>
@@ -148,9 +148,15 @@ export const Footer: React.FC = () => {
         <div className="pt-8 border-t border-[#E6D8CF] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#9E8E87]">
           <p>© {new Date().getFullYear()} RICOZ Collective Inc. All rights reserved.</p>
           <div className="flex items-center gap-6">
-            <span className="hover:text-[#541719] cursor-pointer">Enterprise Security</span>
-            <span className="hover:text-[#541719] cursor-pointer">Privacy Notice</span>
-            <span className="hover:text-[#541719] cursor-pointer">Terms of Service</span>
+            <Link href="/privacy" className="hover:text-[#541719] transition-colors">
+              Enterprise Security
+            </Link>
+            <Link href="/privacy" className="hover:text-[#541719] transition-colors">
+              Privacy Notice
+            </Link>
+            <Link href="/terms" className="hover:text-[#541719] transition-colors">
+              Terms of Service
+            </Link>
             <Link href="/admin" className="hover:text-[#541719]">
               Admin
             </Link>

@@ -20,9 +20,10 @@ import {
   ShieldCheck,
   UserCheck,
   X,
+  Globe,
 } from "lucide-react";
 import { AdminUser, AdminRole } from "@/lib/admin/types";
-import { demoLogout } from "@/lib/demo";
+import { adminApi } from "@/lib/admin/apiClient";
 
 interface AdminSidebarProps {
   user: AdminUser;
@@ -45,13 +46,18 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   const pathname = usePathname();
   const router = useRouter();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     try {
-      demoLogout();
+      await adminApi.auth.logout();
+    } catch (err) {
+      console.warn("Logout API warning:", err);
+    } finally {
+      try {
+        localStorage.removeItem("ricoz_demo_session");
+        localStorage.removeItem("ricoz_admin_user");
+      } catch {}
       router.push("/admin/login");
       router.refresh();
-    } catch {
-      router.push("/admin/login");
     }
   };
 
@@ -110,6 +116,12 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       href: "/admin/sops",
       icon: FileText,
       permission: "sops.view",
+    },
+    {
+      label: "Website & Enquiries",
+      href: "/admin/website",
+      icon: Globe,
+      permission: "website.view",
     },
     {
       label: "Reports & Analytics",

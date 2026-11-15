@@ -125,7 +125,7 @@ export function CollaborationFlow() {
             </h3>
           </div>
           <Link
-            href="/designers"
+            href="/talent"
             className="text-xs font-mono text-brand-secondary hover:text-accent flex items-center gap-1 transition-colors"
           >
             <span>Explore All 18 Studio Case Studies</span>

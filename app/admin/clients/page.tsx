@@ -20,15 +20,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Client, ClientOnboardingStage, AdminUser } from "@/lib/admin/types";
-import {
-  getClients,
-  getClientById,
-  createClient,
-  updateClient,
-  deleteClient,
-  toggleClientChecklistItem,
-  getDepartmentMembers,
-} from "@/lib/demo";
+import { adminApi } from "@/lib/admin/apiClient";
 
 export default function AdminClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -58,25 +50,29 @@ export default function AdminClientsPage() {
   const [newFollowUp, setNewFollowUp] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
-  const fetchClients = () => {
+  const fetchClients = async () => {
     try {
       setLoading(true);
-      const data = getClients({
+      const res = await adminApi.clients.list({
         stage: stageFilter || undefined,
         search: search || undefined,
       });
-      setClients(data);
+      if (res.success && Array.isArray(res.clients)) {
+        setClients(res.clients);
+      }
     } catch (err) {
-      console.error("Error fetching demo clients:", err);
+      console.error("Error fetching live clients:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchTeam = () => {
+  const fetchTeam = async () => {
     try {
-      const members = getDepartmentMembers();
-      setTeamMembers(members as any);
+      const res = await adminApi.team.listUsers();
+      if (res.success && res.users) {
+        setTeamMembers(res.users);
+      }
     } catch {
       // Non-blocking
     }
@@ -90,102 +86,135 @@ export default function AdminClientsPage() {
     fetchClients();
   }, [stageFilter, search]);
 
-  const openClientDetail = (c: Client) => {
+  const openClientDetail = async (c: Client) => {
     setSelectedClient(c);
     setNotesDraft(c.notes || "");
-    setFollowUpDraft(c.nextFollowUp || "");
+    setFollowUpDraft(c.nextFollowUp || (c as any).next_follow_up || "");
     try {
-      const res = getClientById(c.id);
-      if (res.client) {
+      const res = await adminApi.clients.get(c.id);
+      if (res.success && res.client) {
         setSelectedClient(res.client);
         setChecklist((res.checklist || []) as any);
       }
-    } catch {
-      // fallback
+    } catch (err) {
+      console.error("Error fetching client details:", err);
     }
   };
 
-  const handleCreateClient = (e: React.FormEvent) => {
+  const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
     setSaving(true);
 
     try {
-      createClient({
-        name: newName,
+      const res = await adminApi.clients.create({
+        name: newName.trim(),
         industry: newIndustry,
-        contactName: newContactName,
-        contactEmail: newContactEmail,
-        phone: newPhone,
+        contactName: newContactName.trim() || undefined,
+        contactEmail: newContactEmail.trim() || undefined,
+        phone: newPhone.trim() || undefined,
         companySize: newCompanySize,
         onboardingStage: newStage,
         assignedOwnerId: newOwnerId || null,
-        notes: newNotes,
+        notes: newNotes.trim() || undefined,
         nextFollowUp: newFollowUp || null,
       });
 
-      setCreateModalOpen(false);
-      setNewName("");
-      setNewContactName("");
-      setNewContactEmail("");
-      fetchClients();
-    } catch {
-      setFormError("Error creating client in demo mode.");
+      if (res.success) {
+        setCreateModalOpen(false);
+        setNewName("");
+        setNewContactName("");
+        setNewContactEmail("");
+        setNewNotes("");
+        await fetchClients();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("ricoz_admin_refresh"));
+        }
+      } else {
+        setFormError(res.error || "Error creating client.");
+      }
+    } catch (err: any) {
+      setFormError(err.message || "Error creating client.");
     } finally {
       setSaving(false);
     }
   };
 
-  const handleToggleChecklist = (itemId: string, currentStatus: boolean) => {
+  const handleToggleChecklist = async (itemId: string, currentStatus: boolean) => {
     if (!selectedClient) return;
 
     try {
-      toggleClientChecklistItem(selectedClient.id, itemId, !currentStatus);
-      const detail = getClientById(selectedClient.id);
-      if (detail.client) {
-        setSelectedClient(detail.client);
-        setChecklist(detail.checklist as any);
+      const nextStatus = !currentStatus;
+      const res = await adminApi.clients.update(selectedClient.id, {
+        checklistUpdates: [{ itemId, isCompleted: nextStatus }],
+      });
+      if (res.success) {
+        // Optimistically update checklist UI
+        setChecklist((prev) =>
+          prev.map((item) =>
+            item.id === itemId
+              ? { ...item, isCompleted: nextStatus, is_completed: nextStatus ? 1 : 0 }
+              : item
+          )
+        );
+        await openClientDetail(selectedClient);
+        await fetchClients();
       }
-      fetchClients();
     } catch (err) {
       console.error("Toggle checklist error:", err);
     }
   };
 
-  const handleUpdateStage = (stage: ClientOnboardingStage) => {
+  const handleUpdateStage = async (stage: ClientOnboardingStage) => {
     if (!selectedClient) return;
 
     try {
-      const updated = updateClient(selectedClient.id, { onboardingStage: stage });
-      if (updated) {
-        setSelectedClient(updated);
-        fetchClients();
+      const res = await adminApi.clients.update(selectedClient.id, { onboardingStage: stage });
+      if (res.success && res.client) {
+        setSelectedClient(res.client);
+        await fetchClients();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("ricoz_admin_refresh"));
+        }
       }
     } catch (err) {
       console.error("Stage update error:", err);
     }
   };
 
-  const handleSaveNotes = () => {
+  const handleSaveNotes = async () => {
     if (!selectedClient) return;
     try {
       setSaving(true);
-      const updated = updateClient(selectedClient.id, {
+      const res = await adminApi.clients.update(selectedClient.id, {
         notes: notesDraft,
         nextFollowUp: followUpDraft || null,
       });
-      if (updated) setSelectedClient(updated);
-      fetchClients();
+      if (res.success && res.client) {
+        setSelectedClient(res.client);
+      }
+      await fetchClients();
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDeleteClient = (clientId: string) => {
+  const handleDeleteClient = async (clientId: string) => {
     if (!confirm("Are you sure you want to delete this client? This cannot be undone.")) return;
-    deleteClient(clientId);
-    setSelectedClient(null);
-    fetchClients();
+    try {
+      const res = await adminApi.clients.delete(clientId);
+      if (res.success) {
+        setSelectedClient(null);
+        await fetchClients();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("ricoz_admin_refresh"));
+        }
+      } else {
+        alert(res.error || "Failed to delete client");
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to delete client");
+    }
   };
 
   const stageBadges: Record<ClientOnboardingStage, { label: string; color: string }> = {

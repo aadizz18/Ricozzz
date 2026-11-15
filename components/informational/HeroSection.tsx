@@ -1,16 +1,47 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, Sparkles, ShieldCheck } from "lucide-react";
 import { TalentAvatar } from "@/components/ui/TalentAvatar";
 import { EditorialStar, ContourFlourish, EditorialBadge } from "@/components/ui/EditorialDecorations";
+import { adminApi } from "@/lib/admin/apiClient";
 
 interface HeroSectionProps {
   onOpenBriefing?: () => void;
 }
 
 export const HeroSection: React.FC<HeroSectionProps> = ({ onOpenBriefing }) => {
+  const [metrics, setMetrics] = useState({ talentCount: 57, disciplinesCount: 19 });
+  const [sectionData, setSectionData] = useState<{ title?: string; subtitle?: string }>({});
+
+  useEffect(() => {
+    let isMounted = true;
+    adminApi.public
+      .getContent()
+      .then((res) => {
+        if (!isMounted || !res.success) return;
+        if (res.settings?.hero_metrics) {
+          setMetrics({
+            talentCount: res.settings.hero_metrics.talent_count ?? 57,
+            disciplinesCount: res.settings.hero_metrics.disciplines_count ?? 19,
+          });
+        }
+        if (res.sections?.hero_section) {
+          setSectionData({
+            title: res.sections.hero_section.title,
+            subtitle: res.sections.hero_section.subtitle,
+          });
+        }
+      })
+      .catch(() => {
+        // Graceful fallback to static defaults
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   return (
     <section className="relative pt-12 pb-20 sm:pt-16 sm:pb-28 lg:pt-20 lg:pb-32 overflow-hidden bg-[#FBF6F0] border-b border-[#E6D8CF]">
       {/* Delicate Organic Contour Lines Background */}
@@ -32,15 +63,20 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onOpenBriefing }) => {
 
             {/* MAIN HEADING - EDITORIAL PLAYFAIR SERIF */}
             <h1 className="text-4xl sm:text-5xl lg:text-[58px] font-serif font-black tracking-tight text-[#38241F] leading-[1.12]">
-              Great Projects Start With The{" "}
-              <span className="italic font-normal text-[#541719] block sm:inline">
-                Right Creative Talent.
-              </span>
+              {sectionData.title || (
+                <>
+                  Great Projects Start With The{" "}
+                  <span className="italic font-normal text-[#541719] block sm:inline">
+                    Right Creative Talent.
+                  </span>
+                </>
+              )}
             </h1>
 
             {/* SUPPORTING TEXT */}
             <p className="text-base sm:text-lg text-[#76665F] max-w-xl leading-relaxed font-sans font-normal">
-              RICOZ connects visionary enterprises with curated Creative Directors, Brand Architects, and Specialized Design Teams for transformational brand and product mandates.
+              {sectionData.subtitle ||
+                "RICOZ connects visionary enterprises with curated Creative Directors, Brand Architects, and Specialized Design Teams for transformational brand and product mandates."}
             </p>
 
             {/* CTAS */}
@@ -50,7 +86,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onOpenBriefing }) => {
                   href="/talent"
                   className="inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-full bg-[#541719] text-[#FFF9F3] font-sans font-semibold text-base shadow-burgundy hover:bg-[#3E1012] active:scale-95 transition-all group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#541719]"
                 >
-                  <span>Explore Talent (57)</span>
+                  <span>Explore Talent ({metrics.talentCount})</span>
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform motion-reduce:transform-none" />
                 </Link>
 
@@ -90,7 +126,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onOpenBriefing }) => {
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-[#541719] shrink-0" />
-                <span>19 Creative Disciplines</span>
+                <span>{metrics.disciplinesCount} Creative Disciplines</span>
               </div>
             </div>
           </div>

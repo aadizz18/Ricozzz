@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     let fileName = `ricoz_export_${type}_${new Date().toISOString().split("T")[0]}.csv`;
 
     if (type === "tasks") {
-      const rows = db.prepare(`
+      const rows = (await db.prepare(`
         SELECT 
           t.id, t.title, d.name as department, u.full_name as assignee,
           t.priority, t.status, t.due_date, t.completed_at, t.blocker_note, t.is_escalated, t.created_at
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
         JOIN departments d ON t.department_id = d.id
         LEFT JOIN admin_users u ON t.assignee_id = u.id
         ORDER BY t.due_date ASC
-      `).all() as Record<string, unknown>[];
+      `).all()) as Record<string, unknown>[];
 
       const headers = ["ID", "Title", "Department", "Assignee", "Priority", "Status", "DueDate", "CompletedAt", "Blocker", "Escalated", "CreatedAt"];
       csvData = headers.join(",") + "\n" + rows.map((r) => [
@@ -47,14 +47,14 @@ export async function GET(req: NextRequest) {
         escapeCSV(r.created_at),
       ].join(",")).join("\n");
     } else if (type === "clients") {
-      const rows = db.prepare(`
+      const rows = (await db.prepare(`
         SELECT 
           c.id, c.name, c.industry, c.contact_name, c.contact_email, c.phone,
           c.company_size, c.onboarding_stage, u.full_name as owner, c.next_follow_up, c.created_at
         FROM clients c
         LEFT JOIN admin_users u ON c.assigned_owner_id = u.id
         ORDER BY c.name ASC
-      `).all() as Record<string, unknown>[];
+      `).all()) as Record<string, unknown>[];
 
       const headers = ["ID", "Company", "Industry", "ContactName", "ContactEmail", "Phone", "Size", "Stage", "AccountLead", "NextFollowUp", "CreatedAt"];
       csvData = headers.join(",") + "\n" + rows.map((r) => [
@@ -71,14 +71,14 @@ export async function GET(req: NextRequest) {
         escapeCSV(r.created_at),
       ].join(",")).join("\n");
     } else if (type === "vendors") {
-      const rows = db.prepare(`
+      const rows = (await db.prepare(`
         SELECT 
           v.id, v.name, v.service_category, v.contact_name, v.contact_email, v.phone,
           v.onboarding_stage, v.verification_status, u.full_name as coordinator, v.created_at
         FROM vendors v
         LEFT JOIN admin_users u ON v.assigned_coordinator_id = u.id
         ORDER BY v.name ASC
-      `).all() as Record<string, unknown>[];
+      `).all()) as Record<string, unknown>[];
 
       const headers = ["ID", "VendorName", "Category", "ContactName", "ContactEmail", "Phone", "Stage", "VerificationStatus", "Coordinator", "CreatedAt"];
       csvData = headers.join(",") + "\n" + rows.map((r) => [
@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
         escapeCSV(r.created_at),
       ].join(",")).join("\n");
     } else if (type === "tickets") {
-      const rows = db.prepare(`
+      const rows = (await db.prepare(`
         SELECT 
           st.ticket_ref, c.name as client, st.customer_name, st.customer_email,
           st.category, st.priority, st.status, u.full_name as assignee, st.resolved_at, st.created_at
@@ -102,7 +102,7 @@ export async function GET(req: NextRequest) {
         LEFT JOIN clients c ON st.client_id = c.id
         LEFT JOIN admin_users u ON st.assigned_user_id = u.id
         ORDER BY st.created_at DESC
-      `).all() as Record<string, unknown>[];
+      `).all()) as Record<string, unknown>[];
 
       const headers = ["TicketRef", "Client", "CustomerName", "CustomerEmail", "Category", "Priority", "Status", "Assignee", "ResolvedAt", "CreatedAt"];
       csvData = headers.join(",") + "\n" + rows.map((r) => [
@@ -121,7 +121,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Invalid export type" }, { status: 400 });
     }
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: user,
       action: "DATA_EXPORTED_CSV",
       entityType: "reports",

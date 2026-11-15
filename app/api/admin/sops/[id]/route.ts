@@ -14,7 +14,7 @@ export async function GET(
     const { id } = await params;
     const db = getDb();
 
-    const sop = db.prepare(`
+    const sop = await db.prepare(`
       SELECT 
         s.id, s.title, s.slug, s.department_id, s.category, s.summary,
         s.content_markdown, s.version, s.status, s.owner_id, s.last_reviewed_at,
@@ -50,7 +50,7 @@ export async function PATCH(
     const { id } = await params;
     const db = getDb();
 
-    const existing = db.prepare("SELECT * FROM sops WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    const existing = (await db.prepare("SELECT * FROM sops WHERE id = ?").get(id)) as Record<string, unknown> | undefined;
     if (!existing) {
       return NextResponse.json({ success: false, error: "SOP not found" }, { status: 404 });
     }
@@ -65,7 +65,7 @@ export async function PATCH(
     const version = body.version !== undefined ? body.version : existing.version;
     const status = body.status !== undefined ? body.status : existing.status;
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE sops SET
         title = ?,
         category = ?,
@@ -78,7 +78,7 @@ export async function PATCH(
       WHERE id = ?
     `).run(title, category, summary, contentMarkdown, version, status, now, now, id);
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: user,
       action: "SOP_UPDATED",
       entityType: "sop",
@@ -106,14 +106,14 @@ export async function DELETE(
     const { id } = await params;
     const db = getDb();
 
-    const existing = db.prepare("SELECT title FROM sops WHERE id = ?").get(id) as { title: string } | undefined;
+    const existing = (await db.prepare("SELECT title FROM sops WHERE id = ?").get(id)) as { title: string } | undefined;
     if (!existing) {
       return NextResponse.json({ success: false, error: "SOP not found" }, { status: 404 });
     }
 
-    db.prepare("DELETE FROM sops WHERE id = ?").run(id);
+    await db.prepare("DELETE FROM sops WHERE id = ?").run(id);
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: user,
       action: "SOP_DELETED",
       entityType: "sop",

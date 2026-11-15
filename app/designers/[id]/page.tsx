@@ -58,7 +58,7 @@ export default function DesignerProfilePage() {
             title="Designer profile not found"
             description="The requested creative talent profile may have been relocated or is currently inactive."
             actionLabel="Return to talent directory"
-            actionHref="/designers"
+            actionHref="/talent"
           />
         </main>
         <Footer />
@@ -90,7 +90,7 @@ export default function DesignerProfilePage() {
           {/* BREADCRUMB / BACK LINK */}
           <div className="mb-8">
             <Link
-              href="/designers"
+              href="/talent"
               className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-[#76665F] hover:text-[#541719] transition-colors"
             >
               <ArrowLeft className="w-3.5 h-3.5" />

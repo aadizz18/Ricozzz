@@ -86,7 +86,7 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({ onOpenBriefing }) 
                 </Link>
               </li>
               <li>
-                <Link href="/designers" className="hover:text-[#541719] transition-colors">
+                <Link href="/talent" className="hover:text-[#541719] transition-colors">
                   Featured Designers
                 </Link>
               </li>

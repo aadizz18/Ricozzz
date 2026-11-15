@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/admin/auth";
 import { getDb } from "@/lib/admin/db";
 import { recordAuditLog } from "@/lib/admin/audit";
+import crypto from "node:crypto";
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,7 +12,7 @@ export async function GET(req: NextRequest) {
     const db = getDb();
     const today = new Date().toISOString().split("T")[0];
 
-    const departments = db.prepare(`
+    const departments = await db.prepare(`
       SELECT 
         d.id, d.name, d.slug, d.description, d.head_user_id, d.created_at,
         u.full_name as head_user_name,
@@ -47,21 +48,20 @@ export async function POST(req: NextRequest) {
     }
 
     const cleanSlug = (slug || name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    const deptId = `dept-${cleanSlug}`;
-    const now = new Date().toISOString();
+    const deptId = crypto.randomUUID();
 
     const db = getDb();
-    const existing = db.prepare("SELECT id FROM departments WHERE slug = ? OR name = ?").get(cleanSlug, name);
+    const existing = await db.prepare("SELECT id FROM departments WHERE slug = ? OR name = ?").get(cleanSlug, name);
     if (existing) {
       return NextResponse.json({ success: false, error: "A department with this name or slug already exists." }, { status: 409 });
     }
 
-    db.prepare(`
-      INSERT INTO departments (id, name, slug, description, created_at)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(deptId, name.trim(), cleanSlug, description.trim(), now);
+    await db.prepare(`
+      INSERT INTO departments (id, name, slug, description, created_at, updated_at)
+      VALUES (?, ?, ?, ?, NOW(), NOW())
+    `).run(deptId, name.trim(), cleanSlug, description.trim());
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: user,
       action: "DEPARTMENT_CREATED",
       entityType: "department",

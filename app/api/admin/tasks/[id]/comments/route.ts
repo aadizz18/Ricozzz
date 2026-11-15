@@ -22,15 +22,14 @@ export async function POST(
     }
 
     const db = getDb();
-    const commentId = `tcm-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`;
-    const now = new Date().toISOString();
+    const commentId = crypto.randomUUID();
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO task_comments (id, task_id, user_id, comment, is_blocker_update, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(commentId, id, user.id, comment.trim(), isBlockerUpdate ? 1 : 0, now);
+      VALUES (?, ?, ?, ?, ?, NOW())
+    `).run(commentId, id, user.id, comment.trim(), Boolean(isBlockerUpdate));
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: user,
       action: "TASK_COMMENT_ADDED",
       entityType: "task",

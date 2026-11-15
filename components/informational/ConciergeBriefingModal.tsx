@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { X, CheckCircle2, ShieldCheck, Send } from "lucide-react";
+import { X, CheckCircle2, ShieldCheck, Send, AlertCircle } from "lucide-react";
 import { EditorialStar } from "@/components/ui/EditorialDecorations";
+import { adminApi } from "@/lib/admin/apiClient";
 
 interface ConciergeBriefingModalProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ export const ConciergeBriefingModal: React.FC<ConciergeBriefingModalProps> = ({
   const [mandateType, setMandateType] = useState("Brand Architecture & Rebrand");
   const [timeline, setTimeline] = useState("Within 4 weeks");
   const [projectBrief, setProjectBrief] = useState("");
+  const [websiteUrl, setWebsiteUrl] = useState("");
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,7 +42,7 @@ export const ConciergeBriefingModal: React.FC<ConciergeBriefingModalProps> = ({
     };
   }, [isOpen, onClose]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors: Record<string, string> = {};
 
@@ -58,26 +60,44 @@ export const ConciergeBriefingModal: React.FC<ConciergeBriefingModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      const existingInquiries = JSON.parse(localStorage.getItem("ricoz_briefing_requests") || "[]");
-      existingInquiries.push({
-        id: `brief-${Date.now()}`,
-        fullName,
-        email,
-        company,
+      await adminApi.public.submitEnquiry({
+        fullName: fullName.trim(),
+        email: email.trim(),
+        company: company.trim(),
         mandateType,
         timeline,
-        projectBrief,
-        submittedAt: new Date().toISOString(),
+        projectBrief: projectBrief.trim(),
+        website_url: websiteUrl,
       });
-      localStorage.setItem("ricoz_briefing_requests", JSON.stringify(existingInquiries));
-    } catch (err) {
-      console.error("Failed to store briefing request", err);
-    }
 
-    setTimeout(() => {
-      setIsSubmitting(false);
+      // Keep offline cache backup
+      try {
+        const existingInquiries = JSON.parse(localStorage.getItem("ricoz_briefing_requests") || "[]");
+        existingInquiries.push({
+          id: `brief-${Date.now()}`,
+          fullName,
+          email,
+          company,
+          mandateType,
+          timeline,
+          projectBrief,
+          submittedAt: new Date().toISOString(),
+          synced: true,
+        });
+        localStorage.setItem("ricoz_briefing_requests", JSON.stringify(existingInquiries));
+      } catch {
+        // Ignore localStorage quota errors
+      }
+
       setIsSuccess(true);
-    }, 600);
+    } catch (err: any) {
+      console.error("Failed to submit briefing request", err);
+      setErrors({
+        submit: err.message || "Unable to send briefing request. Please check your connection and retry.",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleReset = () => {
@@ -153,6 +173,20 @@ export const ConciergeBriefingModal: React.FC<ConciergeBriefingModalProps> = ({
                 <p className="text-xs sm:text-sm text-[#76665F] mt-1 font-sans">
                   Connect directly with a dedicated curatorial lead to match specialists to your scope.
                 </p>
+              </div>
+
+              {/* Honeypot field for bot protection */}
+              <div className="hidden" aria-hidden="true" style={{ display: "none" }}>
+                <label htmlFor="concierge_website_url">Leave this empty</label>
+                <input
+                  id="concierge_website_url"
+                  type="text"
+                  name="website_url"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  value={websiteUrl}
+                  onChange={(e) => setWebsiteUrl(e.target.value)}
+                />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
@@ -247,6 +281,13 @@ export const ConciergeBriefingModal: React.FC<ConciergeBriefingModalProps> = ({
                 </span>
                 <span>Response in &lt;24h</span>
               </div>
+
+              {errors.submit && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{errors.submit}</span>
+                </div>
+              )}
 
               <div className="pt-3 border-t border-[#E6D8CF] flex items-center justify-end gap-3">
                 <button

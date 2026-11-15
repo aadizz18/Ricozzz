@@ -181,9 +181,13 @@ export function demoLogout(): void {
       "auth.demo_logout",
       "session",
       currentUser.id,
-      `User ${currentUser.fullName} logged out (Frontend Demo Mode)`
+      `User ${currentUser.fullName} logged out`
     );
   }
+
+  try {
+    fetch("/api/admin/auth/logout", { method: "POST" }).catch(() => {});
+  } catch {}
 
   removeStorageItem(STORAGE_KEYS.AUTH_SESSION);
   clearDemoCookie();

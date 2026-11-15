@@ -6,7 +6,6 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await requirePermission("audit_logs.view", req);
     if ("errorResponse" in auth) return auth.errorResponse;
-    const { user } = auth;
 
     const db = getDb();
     const { searchParams } = new URL(req.url);
@@ -39,7 +38,7 @@ export async function GET(req: NextRequest) {
 
     query += " ORDER BY created_at DESC LIMIT 100";
 
-    const logs = db.prepare(query).all(...params);
+    const logs = await db.prepare(query).all(...params);
 
     return NextResponse.json({
       success: true,

@@ -3,15 +3,37 @@
  */
 
 import { Client, ClientOnboardingItem, AdminUser } from "@/lib/admin/types";
-import { getStorageItem, setStorageItem, STORAGE_KEYS } from "./storage";
+import { getStorageItem, setStorageItem, STORAGE_KEYS, isBrowser } from "./storage";
 import { DEFAULT_CLIENTS, DEFAULT_CLIENT_CHECKLIST, DEFAULT_USERS } from "./seedData";
 import { logAuditEvent } from "./audit";
+
+let clientsSyncing = false;
 
 export function getClients(filters?: {
   stage?: string;
   industry?: string;
   search?: string;
 }): Client[] {
+  // Trigger background server sync
+  if (isBrowser() && !clientsSyncing) {
+    clientsSyncing = true;
+    const query = new URLSearchParams();
+    if (filters?.stage) query.set("stage", filters.stage);
+    if (filters?.search) query.set("search", filters.search);
+
+    fetch(`/api/admin/clients?${query.toString()}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && Array.isArray(data.clients) && data.clients.length > 0) {
+          setStorageItem(STORAGE_KEYS.CLIENTS, data.clients);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        clientsSyncing = false;
+      });
+  }
+
   let clients = getStorageItem<Client[]>(STORAGE_KEYS.CLIENTS, DEFAULT_CLIENTS);
   const checklist = getStorageItem<ClientOnboardingItem[]>(STORAGE_KEYS.CLIENT_CHECKLIST, DEFAULT_CLIENT_CHECKLIST);
   const users = getStorageItem<AdminUser[]>(STORAGE_KEYS.USERS, DEFAULT_USERS);
@@ -109,6 +131,30 @@ export function createClient(data: Partial<Client>): Client {
 
   logAuditEvent("client.create", "client", newClient.id, `Registered enterprise client "${newClient.name}"`);
 
+  if (isBrowser()) {
+    fetch("/api/admin/clients", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: newClient.name,
+        industry: newClient.industry,
+        contactName: newClient.contactName,
+        contactEmail: newClient.contactEmail,
+        phone: newClient.phone,
+        companySize: newClient.companySize,
+        ownerId: newClient.assignedOwnerId,
+        notes: newClient.notes,
+      }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((resData) => {
+        if (resData?.clientId) {
+          newClient.id = resData.clientId;
+        }
+      })
+      .catch(() => {});
+  }
+
   return newClient;
 }
 
@@ -133,6 +179,14 @@ export function updateClient(id: string, data: Partial<Client>): Client | null {
 
   logAuditEvent("client.update", "client", id, `Updated enterprise client "${updated.name}"`);
 
+  if (isBrowser()) {
+    fetch(`/api/admin/clients/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).catch(() => {});
+  }
+
   return updated;
 }
 
@@ -148,6 +202,13 @@ export function deleteClient(id: string): boolean {
   setStorageItem(STORAGE_KEYS.CLIENT_CHECKLIST, filteredChecklist);
 
   logAuditEvent("client.delete", "client", id, `Deleted client "${target?.name || id}"`);
+
+  if (isBrowser()) {
+    fetch(`/api/admin/clients/${id}`, {
+      method: "DELETE",
+    }).catch(() => {});
+  }
+
   return true;
 }
 
@@ -169,7 +230,6 @@ export function toggleClientChecklistItem(
 
   setStorageItem(STORAGE_KEYS.CLIENT_CHECKLIST, checklist);
 
-  // Check if all items completed, potentially promote stage
   const clientItems = checklist.filter((item) => item.clientId === clientId);
   const allDone = clientItems.length > 0 && clientItems.every((item) => item.isCompleted);
   if (allDone) {
@@ -182,6 +242,14 @@ export function toggleClientChecklistItem(
     itemId,
     `Marked "${checklist[idx].title}" as ${isCompleted ? "COMPLETED" : "INCOMPLETE"}`
   );
+
+  if (isBrowser()) {
+    fetch(`/api/admin/clients/${clientId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ toggleItemId: itemId, isCompleted }),
+    }).catch(() => {});
+  }
 
   return checklist[idx];
 }

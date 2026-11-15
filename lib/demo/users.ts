@@ -9,7 +9,7 @@ import {
   AdminUserPermissionOverride,
   AdminDepartmentMember,
 } from "@/lib/admin/types";
-import { getStorageItem, setStorageItem, STORAGE_KEYS } from "./storage";
+import { getStorageItem, setStorageItem, STORAGE_KEYS, isBrowser } from "./storage";
 import {
   DEFAULT_USERS,
   DEFAULT_ROLES,
@@ -20,12 +20,29 @@ import {
 } from "./seedData";
 import { logAuditEvent } from "./audit";
 
+let usersSyncing = false;
+
 export function getUsers(filter?: {
   departmentId?: string;
   role?: string;
   status?: string;
   search?: string;
 }): AdminUser[] {
+  if (isBrowser() && !usersSyncing) {
+    usersSyncing = true;
+    fetch("/api/admin/team/users")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && Array.isArray(data.users) && data.users.length > 0) {
+          setStorageItem(STORAGE_KEYS.USERS, data.users);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        usersSyncing = false;
+      });
+  }
+
   let users = getStorageItem<AdminUser[]>(STORAGE_KEYS.USERS, DEFAULT_USERS);
   const depts = getStorageItem<typeof DEFAULT_DEPARTMENTS>(STORAGE_KEYS.DEPARTMENTS, DEFAULT_DEPARTMENTS);
   const members = getStorageItem<AdminDepartmentMember[]>(STORAGE_KEYS.DEPARTMENT_MEMBERS, DEFAULT_DEPARTMENT_MEMBERS);
@@ -130,6 +147,27 @@ export function createUser(data: {
 
   logAuditEvent("user.create", "user", newUser.id, `Created team member ${newUser.fullName} (${newUser.email}) with role ${newUser.role}`);
 
+  if (isBrowser()) {
+    fetch("/api/admin/team/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fullName: newUser.fullName,
+        email: newUser.email,
+        role: newUser.role,
+        departmentId: newUser.departmentId,
+        password: data.password || "Ricozhoo@123",
+      }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((resData) => {
+        if (resData?.user?.id) {
+          newUser.id = resData.user.id;
+        }
+      })
+      .catch(() => {});
+  }
+
   return newUser;
 }
 
@@ -158,6 +196,14 @@ export function updateUser(id: string, data: Partial<AdminUser>): AdminUser | nu
   }
 
   logAuditEvent("user.update", "user", id, `Updated team member profile for ${updatedUser.fullName}`);
+
+  if (isBrowser()) {
+    fetch(`/api/admin/team/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).catch(() => {});
+  }
 
   return updatedUser;
 }
@@ -226,6 +272,20 @@ export function addOverride(data: {
     `Granted explicit ${data.effect.toUpperCase()} override for "${p?.name || data.permissionId}" to ${u?.fullName || data.userId}`
   );
 
+  if (isBrowser()) {
+    fetch("/api/admin/team/overrides", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        adminUserId: data.userId,
+        permissionSlug: newOverride.permissionSlug,
+        effect: data.effect,
+        reason: data.reason,
+        expiresAt: data.expiresAt,
+      }),
+    }).catch(() => {});
+  }
+
   return newOverride;
 }
 
@@ -235,11 +295,17 @@ export function deleteOverride(id: string): boolean {
   setStorageItem(STORAGE_KEYS.OVERRIDES, filtered);
 
   logAuditEvent("override.delete", "permission_override", id, `Removed permission override ${id}`);
+
+  if (isBrowser()) {
+    fetch(`/api/admin/team/overrides?id=${id}`, {
+      method: "DELETE",
+    }).catch(() => {});
+  }
+
   return true;
 }
 
 export function getUserSessions(userId: string) {
-  // Returns simulated active browser sessions
   return [
     {
       id: `sess-${userId}-1`,
@@ -255,5 +321,14 @@ export function getUserSessions(userId: string) {
 
 export function revokeUserSessions(userId: string): { success: boolean; revokedCount: number } {
   logAuditEvent("sessions.revoke", "user_sessions", userId, `Revoked all active sessions for user ${userId}`);
+
+  if (isBrowser()) {
+    fetch(`/api/admin/team/users/${userId}/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revokeAll: true }),
+    }).catch(() => {});
+  }
+
   return { success: true, revokedCount: 1 };
 }

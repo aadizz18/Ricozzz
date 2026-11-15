@@ -3,11 +3,29 @@
  */
 
 import { Department, AdminDepartmentMember, Task, AdminUser } from "@/lib/admin/types";
-import { getStorageItem, setStorageItem, STORAGE_KEYS } from "./storage";
+import { getStorageItem, setStorageItem, STORAGE_KEYS, isBrowser } from "./storage";
 import { DEFAULT_DEPARTMENTS, DEFAULT_DEPARTMENT_MEMBERS, DEFAULT_USERS, DEFAULT_TASKS } from "./seedData";
 import { logAuditEvent } from "./audit";
 
+let deptsSyncing = false;
+let membersSyncing = false;
+
 export function getDepartments(): Department[] {
+  if (isBrowser() && !deptsSyncing) {
+    deptsSyncing = true;
+    fetch("/api/admin/departments")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && Array.isArray(data.departments) && data.departments.length > 0) {
+          setStorageItem(STORAGE_KEYS.DEPARTMENTS, data.departments);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        deptsSyncing = false;
+      });
+  }
+
   const depts = getStorageItem<Department[]>(STORAGE_KEYS.DEPARTMENTS, DEFAULT_DEPARTMENTS);
   const users = getStorageItem<AdminUser[]>(STORAGE_KEYS.USERS, DEFAULT_USERS);
   const tasks = getStorageItem<Task[]>(STORAGE_KEYS.TASKS, DEFAULT_TASKS);
@@ -60,6 +78,26 @@ export function createDepartment(data: {
 
   logAuditEvent("department.create", "department", newDept.id, `Created department "${newDept.name}"`);
 
+  if (isBrowser()) {
+    fetch("/api/admin/departments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: newDept.name,
+        slug: newDept.slug,
+        description: newDept.description,
+        headUserId: newDept.headUserId,
+      }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((resData) => {
+        if (resData?.department?.id) {
+          newDept.id = resData.department.id;
+        }
+      })
+      .catch(() => {});
+  }
+
   return newDept;
 }
 
@@ -96,10 +134,33 @@ export function assignDepartmentHead(departmentId: string, headUserId: string | 
     `Assigned ${targetHead ? targetHead.fullName : "None"} as head of department "${depts[idx].name}"`
   );
 
+  if (isBrowser()) {
+    fetch(`/api/admin/departments/${departmentId}/head`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ headUserId }),
+    }).catch(() => {});
+  }
+
   return depts[idx];
 }
 
 export function getDepartmentMembers(departmentId?: string): AdminDepartmentMember[] {
+  if (isBrowser() && !membersSyncing) {
+    membersSyncing = true;
+    fetch("/api/admin/departments/members")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && Array.isArray(data.members) && data.members.length > 0) {
+          setStorageItem(STORAGE_KEYS.USERS, data.members);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        membersSyncing = false;
+      });
+  }
+
   const members = getStorageItem<AdminDepartmentMember[]>(STORAGE_KEYS.DEPARTMENT_MEMBERS, DEFAULT_DEPARTMENT_MEMBERS);
   const users = getStorageItem<AdminUser[]>(STORAGE_KEYS.USERS, DEFAULT_USERS);
   const depts = getStorageItem<Department[]>(STORAGE_KEYS.DEPARTMENTS, DEFAULT_DEPARTMENTS);

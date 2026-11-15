@@ -11,6 +11,12 @@ import {
   CheckCircle2,
   ArrowRight
 } from "lucide-react";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "For Creatives — Lead Transformative Mandates On Your Own Terms",
+  description: "Direct access to enterprise clients, transparent compensation, and zero bidding wars for premier independent Creative Directors.",
+};
 
 export default function ForCreativesPage() {
   const creativePillars = [

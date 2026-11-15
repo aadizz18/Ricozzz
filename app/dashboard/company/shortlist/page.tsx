@@ -67,7 +67,7 @@ export default function ShortlistPage() {
               </p>
             </div>
 
-            <Button href="/designers" size="md" variant="outline">
+            <Button href="/talent" size="md" variant="outline">
               Explore More Talent
             </Button>
           </div>
@@ -78,7 +78,7 @@ export default function ShortlistPage() {
               title="Your shortlist is empty."
               description="Save creative professionals from our talent directory to compare profiles, review client portfolios, or start a conversation."
               actionLabel="Explore designers"
-              actionHref="/designers"
+              actionHref="/talent"
             />
           ) : (
             <div className="space-y-4">
@@ -100,7 +100,7 @@ export default function ShortlistPage() {
                     <div className="min-w-0 space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <Link
-                          href={`/designers/${designer.id}`}
+                          href={`/talent/${designer.id}`}
                           className="font-medium text-base text-brand hover:text-accent transition-colors"
                         >
                           {designer.name}
@@ -161,7 +161,7 @@ export default function ShortlistPage() {
                     </Button>
 
                     <Button
-                      href={`/designers/${designer.id}`}
+                      href={`/talent/${designer.id}`}
                       size="sm"
                       variant="secondary"
                     >

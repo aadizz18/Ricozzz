@@ -120,7 +120,7 @@ export function TalentStream() {
             return (
               <Link
                 key={`r1-${talent.id}-${idx}`}
-                href={`/designers/${talent.id}`}
+                href={`/talent/${talent.id}`}
                 onMouseEnter={() => setHoveredId(`${talent.id}-${idx}`)}
                 onMouseLeave={() => setHoveredId(null)}
                 className={`group relative rounded-2xl p-4 sm:p-5 transition-all duration-300 w-[300px] sm:w-[350px] shrink-0 backdrop-blur-md ${
@@ -186,7 +186,7 @@ export function TalentStream() {
             return (
               <Link
                 key={`r2-${talent.id}-${idx}`}
-                href={`/designers/${talent.id}`}
+                href={`/talent/${talent.id}`}
                 onMouseEnter={() => setHoveredId(`${talent.id}-r2-${idx}`)}
                 onMouseLeave={() => setHoveredId(null)}
                 className={`group relative rounded-2xl p-4 sm:p-5 transition-all duration-300 w-[300px] sm:w-[350px] shrink-0 backdrop-blur-md ${

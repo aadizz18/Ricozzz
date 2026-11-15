@@ -3,9 +3,11 @@
  */
 
 import { SupportTicket, TicketResponse, AdminUser, Client } from "@/lib/admin/types";
-import { getStorageItem, setStorageItem, STORAGE_KEYS } from "./storage";
+import { getStorageItem, setStorageItem, STORAGE_KEYS, isBrowser } from "./storage";
 import { DEFAULT_SUPPORT_TICKETS, DEFAULT_TICKET_RESPONSES, DEFAULT_USERS, DEFAULT_CLIENTS } from "./seedData";
 import { logAuditEvent } from "./audit";
+
+let supportSyncing = false;
 
 export function getTickets(filters?: {
   status?: string;
@@ -13,6 +15,28 @@ export function getTickets(filters?: {
   category?: string;
   search?: string;
 }): SupportTicket[] {
+  // Trigger background server sync
+  if (isBrowser() && !supportSyncing) {
+    supportSyncing = true;
+    const query = new URLSearchParams();
+    if (filters?.status) query.set("status", filters.status);
+    if (filters?.priority) query.set("priority", filters.priority);
+    if (filters?.category) query.set("category", filters.category);
+    if (filters?.search) query.set("search", filters.search);
+
+    fetch(`/api/admin/support?${query.toString()}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && Array.isArray(data.tickets) && data.tickets.length > 0) {
+          setStorageItem(STORAGE_KEYS.SUPPORT_TICKETS, data.tickets);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        supportSyncing = false;
+      });
+  }
+
   let tickets = getStorageItem<SupportTicket[]>(STORAGE_KEYS.SUPPORT_TICKETS, DEFAULT_SUPPORT_TICKETS);
   const responses = getStorageItem<TicketResponse[]>(STORAGE_KEYS.SUPPORT_RESPONSES, DEFAULT_TICKET_RESPONSES);
   const users = getStorageItem<AdminUser[]>(STORAGE_KEYS.USERS, DEFAULT_USERS);
@@ -99,6 +123,31 @@ export function createTicket(data: Partial<SupportTicket>): SupportTicket {
 
   logAuditEvent("support.create", "support_ticket", newTicket.id, `Opened support ticket ${newTicket.ticketRef}: "${newTicket.subject}"`);
 
+  if (isBrowser()) {
+    fetch("/api/admin/support", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        clientId: newTicket.clientId,
+        customerName: newTicket.customerName,
+        customerEmail: newTicket.customerEmail,
+        category: newTicket.category,
+        subject: newTicket.subject,
+        description: newTicket.description,
+        priority: newTicket.priority,
+        assignedUserId: newTicket.assignedUserId,
+      }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((resData) => {
+        if (resData?.ticketId) {
+          newTicket.id = resData.ticketId;
+          if (resData.ticketRef) newTicket.ticketRef = resData.ticketRef;
+        }
+      })
+      .catch(() => {});
+  }
+
   return newTicket;
 }
 
@@ -122,6 +171,14 @@ export function updateTicket(id: string, data: Partial<SupportTicket>): SupportT
   setStorageItem(STORAGE_KEYS.SUPPORT_TICKETS, tickets);
 
   logAuditEvent("support.update", "support_ticket", id, `Updated ticket ${updated.ticketRef} (Status: ${updated.status})`);
+
+  if (isBrowser()) {
+    fetch(`/api/admin/support/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).catch(() => {});
+  }
 
   return updated;
 }
@@ -161,6 +218,14 @@ export function addTicketResponse(
     newResponse.id,
     `Added ${isInternalNote ? "INTERNAL NOTE" : "response"} to ticket ${ticketId}`
   );
+
+  if (isBrowser()) {
+    fetch(`/api/admin/support/${ticketId}/responses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, isInternalNote }),
+    }).catch(() => {});
+  }
 
   return newResponse;
 }

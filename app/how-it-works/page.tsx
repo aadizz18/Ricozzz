@@ -4,6 +4,12 @@ import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { Clock, CheckCircle2, ArrowRight } from "lucide-react";
 import { EditorialStar, ContourFlourish } from "@/components/ui/EditorialDecorations";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "How It Works — Deterministic Creative Matching & Vetting",
+  description: "Discover our 4-step creative mandate methodology, portfolio evaluation rigor, and enterprise safeguards.",
+};
 
 export default function HowItWorksPage() {
   const detailedSteps = [
@@ -124,7 +130,7 @@ export default function HowItWorksPage() {
           </div>
 
           {/* VETTING ACCORD SECTION */}
-          <div className="mt-16 bg-espresso text-[#FFF9F3] border border-[#38241F] rounded-2xl p-8 sm:p-12 shadow-xl relative overflow-hidden">
+          <div id="vetting" className="mt-16 bg-espresso text-[#FFF9F3] border border-[#38241F] rounded-2xl p-8 sm:p-12 shadow-xl relative overflow-hidden">
             <ContourFlourish className="absolute -right-16 -bottom-16 w-80 h-80 text-white/5 pointer-events-none" />
 
             <div className="max-w-3xl space-y-4 relative z-10">

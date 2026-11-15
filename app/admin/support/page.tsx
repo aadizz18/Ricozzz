@@ -19,16 +19,7 @@ import {
   Lock,
 } from "lucide-react";
 import { SupportTicket, TicketPriority, TicketStatus, TicketCategory, AdminUser, Client } from "@/lib/admin/types";
-import {
-  getTickets,
-  getTicketById,
-  createTicket,
-  updateTicket,
-  resolveTicket,
-  addTicketResponse,
-  getDepartmentMembers,
-  getClients,
-} from "@/lib/demo";
+import { adminApi } from "@/lib/admin/apiClient";
 
 export default function AdminSupportPage() {
   const searchParams = useSearchParams();
@@ -65,33 +56,41 @@ export default function AdminSupportPage() {
   const [newAssigneeId, setNewAssigneeId] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
-  const fetchTickets = () => {
+  const fetchTickets = async () => {
     try {
       setLoading(true);
-      const data = getTickets({
+      const res = await adminApi.support.list({
         status: statusFilter || undefined,
         priority: priorityFilter || undefined,
         category: categoryFilter || undefined,
         search: search || undefined,
       });
-      setTickets(data);
-      if (initialRef && !selectedTicket) {
-        const found = data.find((t: SupportTicket) => t.ticketRef === initialRef);
-        if (found) openTicketDetail(found);
+      if (res.success && Array.isArray(res.tickets)) {
+        setTickets(res.tickets);
+        if (initialRef && !selectedTicket) {
+          const found = res.tickets.find((t: SupportTicket) => t.ticketRef === initialRef || (t as any).ticket_ref === initialRef);
+          if (found) openTicketDetail(found);
+        }
       }
     } catch (err) {
-      console.error("Error fetching demo tickets:", err);
+      console.error("Error fetching live support tickets:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchMetadata = () => {
+  const fetchMetadata = async () => {
     try {
-      const members = getDepartmentMembers();
-      const clientList = getClients();
-      setTeamMembers(members as any);
-      setClients(clientList);
+      const [teamRes, clientRes] = await Promise.allSettled([
+        adminApi.team.listUsers(),
+        adminApi.clients.list(),
+      ]);
+      if (teamRes.status === "fulfilled" && teamRes.value.success && teamRes.value.users) {
+        setTeamMembers(teamRes.value.users);
+      }
+      if (clientRes.status === "fulfilled" && clientRes.value.success && clientRes.value.clients) {
+        setClients(clientRes.value.clients);
+      }
     } catch {
       // Non-blocking
     }
@@ -105,77 +104,91 @@ export default function AdminSupportPage() {
     fetchTickets();
   }, [statusFilter, priorityFilter, categoryFilter, search]);
 
-  const openTicketDetail = (ticket: SupportTicket) => {
+  const openTicketDetail = async (ticket: SupportTicket) => {
     setSelectedTicket(ticket);
-    setResolutionNotes(ticket.resolutionNotes || "");
+    setResolutionNotes(ticket.resolutionNotes || (ticket as any).resolution_notes || "");
     try {
-      const res = getTicketById(ticket.id);
-      if (res.ticket) {
+      const res = await adminApi.support.get(ticket.id);
+      if (res.success && res.ticket) {
         setSelectedTicket(res.ticket);
         setResponses(res.responses || []);
       }
-    } catch {
-      // fallback
+    } catch (err) {
+      console.error("Error loading ticket detail:", err);
     }
   };
 
-  const handleCreateTicket = (e: React.FormEvent) => {
+  const handleCreateTicket = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
     setSaving(true);
 
     try {
-      createTicket({
+      const res = await adminApi.support.create({
         clientId: newClientId || null,
-        customerName: newCustName,
-        customerEmail: newCustEmail,
+        customerName: newCustName.trim(),
+        customerEmail: newCustEmail.trim(),
         category: newCategory,
-        subject: newSubject,
-        description: newDesc,
+        subject: newSubject.trim(),
+        description: newDesc.trim(),
         priority: newPriority,
         assignedUserId: newAssigneeId || null,
       });
 
-      setCreateModalOpen(false);
-      setNewCustName("");
-      setNewCustEmail("");
-      setNewSubject("");
-      setNewDesc("");
-      fetchTickets();
-    } catch {
-      setFormError("Error submitting ticket in demo mode.");
+      if (res.success) {
+        setCreateModalOpen(false);
+        setNewCustName("");
+        setNewCustEmail("");
+        setNewSubject("");
+        setNewDesc("");
+        await fetchTickets();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("ricoz_admin_refresh"));
+        }
+      } else {
+        setFormError(res.error || "Error submitting ticket.");
+      }
+    } catch (err: any) {
+      setFormError(err.message || "Error submitting ticket.");
     } finally {
       setSaving(false);
     }
   };
 
-  const handleUpdateStatus = (status: TicketStatus) => {
+  const handleUpdateStatus = async (status: TicketStatus) => {
     if (!selectedTicket) return;
 
     try {
-      if (status === "resolved") {
-        resolveTicket(selectedTicket.id, resolutionNotes);
-      } else {
-        updateTicket(selectedTicket.id, { status });
+      const res = await adminApi.support.update(selectedTicket.id, {
+        status,
+        resolutionNotes: status === "resolved" ? resolutionNotes : undefined,
+      });
+      if (res.success && res.ticket) {
+        setSelectedTicket(res.ticket);
+        await fetchTickets();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("ricoz_admin_refresh"));
+        }
       }
-      const updated = getTicketById(selectedTicket.id);
-      if (updated.ticket) setSelectedTicket(updated.ticket);
-      fetchTickets();
     } catch (err) {
       console.error("Status update error:", err);
     }
   };
 
-  const handlePostResponse = (e: React.FormEvent) => {
+  const handlePostResponse = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTicket || !newResponse.trim()) return;
 
     try {
       setSaving(true);
-      addTicketResponse(selectedTicket.id, newResponse, isInternalNote);
-      setNewResponse("");
-      openTicketDetail(selectedTicket);
-      fetchTickets();
+      const res = await adminApi.support.addResponse(selectedTicket.id, newResponse.trim(), isInternalNote);
+      if (res.success) {
+        setNewResponse("");
+        await openTicketDetail(selectedTicket);
+        await fetchTickets();
+      }
+    } catch (err) {
+      console.error("Post response error:", err);
     } finally {
       setSaving(false);
     }

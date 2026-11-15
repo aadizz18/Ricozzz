@@ -1,15 +1,48 @@
 /**
- * RICOZ Admin — Simulated Audit Logging Service
+ * RICOZ Admin — Simulated & Authoritative Audit Logging Service
  */
 
 import { AuditLog } from "@/lib/admin/types";
-import { getStorageItem, setStorageItem, STORAGE_KEYS } from "./storage";
+import { getStorageItem, setStorageItem, STORAGE_KEYS, isBrowser } from "./storage";
 import { DEFAULT_AUDIT_LOGS } from "./seedData";
+
+let auditSyncing = false;
 
 export function getAuditLogs(filters?: {
   entityType?: string;
   search?: string;
 }): AuditLog[] {
+  if (isBrowser() && !auditSyncing) {
+    auditSyncing = true;
+    const query = new URLSearchParams();
+    if (filters?.entityType) query.set("entityType", filters.entityType);
+    if (filters?.search) query.set("search", filters.search);
+
+    fetch(`/api/admin/audit-log?${query.toString()}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && Array.isArray(data.logs) && data.logs.length > 0) {
+          const mapped = data.logs.map((l: any) => ({
+            id: l.id,
+            actorId: l.actor_id,
+            actorName: l.actor_name,
+            actorRole: l.actor_role,
+            action: l.action,
+            entityType: l.entity_type,
+            entityId: l.entity_id,
+            changeSummary: l.change_summary,
+            ipAddress: l.ip_address,
+            createdAt: l.created_at,
+          }));
+          setStorageItem(STORAGE_KEYS.AUDIT_LOGS, mapped);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        auditSyncing = false;
+      });
+  }
+
   let logs = getStorageItem<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, DEFAULT_AUDIT_LOGS);
 
   if (filters?.entityType) {

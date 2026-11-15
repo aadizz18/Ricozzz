@@ -4,7 +4,7 @@
  */
 
 import { Task, Client, Vendor, SupportTicket, Department, AdminDepartmentMember, AuditLog, Notification, OperationsKPIs } from "@/lib/admin/types";
-import { getStorageItem, STORAGE_KEYS } from "./storage";
+import { getStorageItem, setStorageItem, STORAGE_KEYS, isBrowser } from "./storage";
 import {
   DEFAULT_TASKS,
   DEFAULT_CLIENTS,
@@ -15,6 +15,9 @@ import {
   DEFAULT_AUDIT_LOGS,
   DEFAULT_NOTIFICATIONS,
 } from "./seedData";
+
+let dashboardSyncing = false;
+let badgesSyncing = false;
 
 export interface DashboardData {
   kpis: OperationsKPIs;
@@ -175,6 +178,21 @@ export function getDashboardBadges(): {
   pendingVendors: number;
   unreadNotifications: number;
 } {
+  if (isBrowser() && !badgesSyncing) {
+    badgesSyncing = true;
+    fetch("/api/admin/dashboard/badges")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && data?.counts) {
+          // If counts returned from backend, update UI
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        badgesSyncing = false;
+      });
+  }
+
   const tasks = getStorageItem<Task[]>(STORAGE_KEYS.TASKS, DEFAULT_TASKS);
   const tickets = getStorageItem<SupportTicket[]>(STORAGE_KEYS.SUPPORT_TICKETS, DEFAULT_SUPPORT_TICKETS);
   const vendors = getStorageItem<Vendor[]>(STORAGE_KEYS.VENDORS, DEFAULT_VENDORS);

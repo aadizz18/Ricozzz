@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
         v.onboarding_stage, v.verification_status, v.assigned_coordinator_id, v.notes,
         v.created_at, v.updated_at,
         u.full_name as assigned_coordinator_name,
-        (SELECT count(*) FROM vendor_documents vd WHERE vd.vendor_id = v.id AND vd.is_verified = 1) as verified_docs_count,
+        (SELECT count(*) FROM vendor_documents vd WHERE vd.vendor_id = v.id AND vd.is_verified = TRUE) as verified_docs_count,
         (SELECT count(*) FROM vendor_documents vd WHERE vd.vendor_id = v.id) as total_docs_count
       FROM vendors v
       LEFT JOIN admin_users u ON v.assigned_coordinator_id = u.id
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
 
     query += " ORDER BY v.created_at DESC";
 
-    const vendors = db.prepare(query).all(...params);
+    const vendors = await db.prepare(query).all(...params);
 
     return NextResponse.json({
       success: true,
@@ -73,10 +73,10 @@ export async function POST(req: NextRequest) {
     }
 
     const db = getDb();
-    const vendorId = `ven-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`;
+    const vendorId = crypto.randomUUID();
     const now = new Date().toISOString();
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO vendors (
         id, name, service_category, contact_name, contact_email, phone,
         onboarding_stage, verification_status, assigned_coordinator_id, notes,
@@ -105,21 +105,21 @@ export async function POST(req: NextRequest) {
 
     const insertDoc = db.prepare(`
       INSERT INTO vendor_documents (id, vendor_id, document_type, file_name, file_url, is_verified, created_at)
-      VALUES (?, ?, ?, ?, ?, 0, ?)
+      VALUES (?, ?, ?, ?, ?, false, ?)
     `);
 
-    requiredDocs.forEach((doc, idx) => {
-      insertDoc.run(
-        `vdoc-${vendorId}-${idx}`,
+    for (const doc of requiredDocs) {
+      await insertDoc.run(
+        crypto.randomUUID(),
         vendorId,
         doc.type,
         doc.file,
         `/docs/vendors/${doc.file}`,
         now
       );
-    });
+    }
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: user,
       action: "VENDOR_REGISTERED",
       entityType: "vendor",

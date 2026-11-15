@@ -446,3 +446,60 @@ export interface OperationsKPIs {
   criticalTickets: number;
   resolvedTicketsRate: number;
 }
+
+export const ADMIN_PRESET_ACCOUNTS = [
+  {
+    name: "Aadinath Achary",
+    email: "aadinathachary@gmail.com",
+    role: "Super Admin / Owner",
+    department: "Operations & Governance",
+    badge: "Full Clearance (Level 1)",
+    avatar: "AA",
+    color: "from-red-600 to-red-800",
+  },
+  {
+    name: "Elena Ramos",
+    email: "elena.ramos@ricoz.io",
+    role: "Operations Admin",
+    department: "Operations",
+    badge: "Workflows & Vetting",
+    avatar: "ER",
+    color: "from-amber-600 to-amber-800",
+  },
+  {
+    name: "Kai Chen",
+    email: "kai.chen@ricoz.io",
+    role: "Technology Manager",
+    department: "Technology & AI",
+    badge: "Engineering & Infra",
+    avatar: "KC",
+    color: "from-blue-600 to-blue-800",
+  },
+  {
+    name: "Sarah Jenkins",
+    email: "sarah.jenkins@ricoz.io",
+    role: "Sales & Mandate Lead",
+    department: "Sales & Partnerships",
+    badge: "Client Scoping",
+    avatar: "SJ",
+    color: "from-emerald-600 to-emerald-800",
+  },
+  {
+    name: "David Ross",
+    email: "david.ross@ricoz.io",
+    role: "Support Manager",
+    department: "Customer Support",
+    badge: "SLA & Complaints",
+    avatar: "DR",
+    color: "from-purple-600 to-purple-800",
+  },
+  {
+    name: "Rachel Thorne",
+    email: "audit@ricoz.io",
+    role: "Compliance Auditor",
+    department: "Audit & Oversight",
+    badge: "Strict Read-Only",
+    avatar: "RT",
+    color: "from-slate-600 to-slate-800",
+  },
+];

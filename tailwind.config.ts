@@ -90,6 +90,7 @@ const config: Config = {
       },
       fontFamily: {
         serif: [
+          "var(--font-playfair)",
           "Playfair Display",
           "DM Serif Display",
           "Georgia",
@@ -98,6 +99,8 @@ const config: Config = {
           "serif",
         ],
         sans: [
+          "var(--font-dm-sans)",
+          "var(--font-inter)",
           "DM Sans",
           "Inter",
           "-apple-system",

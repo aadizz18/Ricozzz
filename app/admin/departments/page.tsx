@@ -18,7 +18,7 @@ import {
   Layers,
 } from "lucide-react";
 import { Department, AdminRole } from "@/lib/admin/types";
-import { getDepartments, getDepartmentMembers, createUser, addDepartmentMember } from "@/lib/demo";
+import { adminApi } from "@/lib/admin/apiClient";
 
 export default function AdminDepartmentsPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -30,20 +30,32 @@ export default function AdminDepartmentsPage() {
   const [newEmail, setNewEmail] = useState("");
   const [newName, setNewName] = useState("");
   const [newRole, setNewRole] = useState<AdminRole>("team_member");
-  const [newDeptId, setNewDeptId] = useState("dept-ops");
+  const [newDeptId, setNewDeptId] = useState("");
   const [newPassword, setNewPassword] = useState("TempPass2026!");
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const fetchData = () => {
+  const fetchData = async () => {
     try {
       setLoading(true);
-      const d = getDepartments();
-      const m = getDepartmentMembers();
-      setDepartments(d);
-      setMembers(m);
+      const [deptRes, usersRes] = await Promise.all([
+        adminApi.departments.list(),
+        adminApi.team.listUsers(),
+      ]);
+      const depts = deptRes.departments || [];
+      const userList = (usersRes.users || []).map((u: any) => ({
+        ...u,
+        full_name: u.fullName || u.full_name,
+        department_name: u.departmentName || u.department_name,
+        avatar: u.avatar || (u.fullName ? u.fullName.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase() : "U"),
+      }));
+      setDepartments(depts);
+      setMembers(userList);
+      if (depts.length > 0 && (!newDeptId || newDeptId === "dept-ops")) {
+        setNewDeptId(depts[0].id);
+      }
     } catch (err) {
-      console.error("Error loading demo departments data:", err);
+      console.error("Error loading departments data:", err);
     } finally {
       setLoading(false);
     }
@@ -53,33 +65,44 @@ export default function AdminDepartmentsPage() {
     fetchData();
   }, []);
 
-  const handleCreateMember = (e: React.FormEvent) => {
+  const handleCreateMember = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
     setSaving(true);
 
     try {
-      const newUser = createUser({
+      const res = await adminApi.team.createUser({
         email: newEmail,
         fullName: newName,
         role: newRole,
-        departmentId: newDeptId,
+        departmentId: newDeptId || null,
         password: newPassword,
       });
 
-      addDepartmentMember({
-        adminUserId: newUser.id,
-        departmentId: newDeptId,
-        membershipRole: "member",
-        isPrimary: true,
-      });
+      if (!res.success) {
+        throw new Error((res as any).error || "Failed to create team member");
+      }
+
+      if (res.user?.id && newDeptId) {
+        try {
+          await adminApi.departments.addMember({
+            adminUserId: res.user.id,
+            departmentId: newDeptId,
+            membershipRole: "member",
+            isPrimary: true,
+          });
+        } catch {
+          // Non-blocking if membership already tied via department_id
+        }
+      }
 
       setAddModalOpen(false);
       setNewEmail("");
       setNewName("");
-      fetchData();
-    } catch {
-      setFormError("Error while provisioning user in demo mode.");
+      await fetchData();
+      window.dispatchEvent(new Event("ricoz_admin_refresh"));
+    } catch (err: any) {
+      setFormError(err.message || "Error while provisioning user.");
     } finally {
       setSaving(false);
     }

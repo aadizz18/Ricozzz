@@ -16,7 +16,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { SOP, Department } from "@/lib/admin/types";
-import { getSOPs, getSOPById, createSOP, updateSOP, deleteSOP, getDepartments } from "@/lib/demo";
+import { adminApi } from "@/lib/admin/apiClient";
 
 export default function AdminSOPsPage() {
   const [sops, setSops] = useState<SOP[]>([]);
@@ -30,35 +30,40 @@ export default function AdminSOPsPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [newTitle, setNewTitle] = useState("");
-  const [newDept, setNewDept] = useState("dept-ops");
+  const [newDept, setNewDept] = useState("");
   const [newCategory, setNewCategory] = useState("Quality Assurance");
   const [newVersion, setNewVersion] = useState("v1.0");
   const [newSummary, setNewSummary] = useState("");
   const [newContent, setNewContent] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
-  const fetchSops = () => {
+  const fetchSops = async () => {
     try {
       setLoading(true);
-      const data = getSOPs({
+      const res = await adminApi.sops.list({
         departmentId: selectedDept || undefined,
         search: search || undefined,
       });
+      const data = res.sops || [];
       setSops(data);
-      if (data.length > 0 && !activeSop) {
+      if (data.length > 0 && (!activeSop || !data.some((s) => s.id === activeSop.id))) {
         setActiveSop(data[0]);
       }
-    } catch (err) {
-      console.error("Error loading demo SOPs:", err);
+    } catch (err: any) {
+      console.error("Error loading SOPs:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchDepts = () => {
+  const fetchDepts = async () => {
     try {
-      const d = getDepartments();
+      const res = await adminApi.departments.list();
+      const d = res.departments || [];
       setDepartments(d);
+      if (d.length > 0 && !newDept) {
+        setNewDept(d[0].id);
+      }
     } catch {
       // Non-blocking
     }
@@ -72,13 +77,13 @@ export default function AdminSOPsPage() {
     fetchSops();
   }, [selectedDept, search]);
 
-  const handleCreateSop = (e: React.FormEvent) => {
+  const handleCreateSop = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
     setSaving(true);
 
     try {
-      const newCreated = createSOP({
+      const res = await adminApi.sops.create({
         title: newTitle,
         departmentId: newDept,
         category: newCategory,
@@ -87,14 +92,21 @@ export default function AdminSOPsPage() {
         contentMarkdown: newContent,
       });
 
+      if (!res.success) {
+        throw new Error((res as any).error || "Failed to create SOP");
+      }
+
       setCreateModalOpen(false);
       setNewTitle("");
       setNewSummary("");
       setNewContent("");
-      setActiveSop(newCreated);
-      fetchSops();
-    } catch {
-      setFormError("Error creating SOP in demo mode");
+      if (res.sop) {
+        setActiveSop(res.sop);
+      }
+      await fetchSops();
+      window.dispatchEvent(new Event("ricoz_admin_refresh"));
+    } catch (err: any) {
+      setFormError(err.message || "Error creating SOP");
     } finally {
       setSaving(false);
     }

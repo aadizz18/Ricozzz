@@ -711,7 +711,7 @@ export function HeroEcosystem() {
         {/* Bottom CTA */}
         <div className="pt-2">
           <Link
-            href="/designers"
+            href="/talent"
             className="w-full py-2.5 px-3 rounded-xl bg-accent text-background text-center font-mono font-semibold flex items-center justify-center gap-1.5 text-xs shadow-glow"
           >
             <span>Explore Curated Creative Talent</span>

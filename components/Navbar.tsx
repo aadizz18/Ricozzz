@@ -1,26 +1,58 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Search, Menu, X, ArrowRight, LayoutDashboard } from "lucide-react";
+import {
+  Search,
+  Menu,
+  X,
+  ArrowRight,
+  LayoutDashboard,
+  User,
+  LogOut,
+  ChevronDown,
+  Briefcase,
+  Building2,
+  FolderKanban,
+  Heart,
+  Sparkles,
+} from "lucide-react";
 import { SearchModal } from "@/components/SearchModal";
 import { Wordmark } from "@/components/brand/Wordmark";
 import { getCurrentUser } from "@/lib/storage";
-import { User } from "@/types";
+import { useAuth } from "@/lib/auth/AuthContext";
+import { User as DemoUser } from "@/types";
 
 export const Navbar: React.FC = () => {
   const pathname = usePathname();
+  const { user: authUser, profile, accountType, loading: authLoading, logout } = useAuth();
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [currentUser, setUserState] = useState<User | null>(null);
+  const [accountDropdownOpen, setAccountDropdownOpen] = useState(false);
+  const [demoUser, setDemoUser] = useState<DemoUser | null>(null);
   const [scrolled, setScrolled] = useState(false);
 
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Sync demo localStorage user if auth user is not logged in
   useEffect(() => {
-    setUserState(getCurrentUser());
-    const onUserUpdate = () => setUserState(getCurrentUser());
+    setDemoUser(getCurrentUser());
+    const onUserUpdate = () => setDemoUser(getCurrentUser());
     window.addEventListener("brandroom_user_updated", onUserUpdate);
     return () => window.removeEventListener("brandroom_user_updated", onUserUpdate);
+  }, []);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setAccountDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   useEffect(() => {
@@ -33,6 +65,7 @@ export const Navbar: React.FC = () => {
 
   useEffect(() => {
     setMobileMenuOpen(false);
+    setAccountDropdownOpen(false);
   }, [pathname]);
 
   const navLinks = [
@@ -42,6 +75,32 @@ export const Navbar: React.FC = () => {
     { label: "For Companies", href: "/companies" },
     { label: "For Creatives", href: "/creatives" },
   ];
+
+  // Resolve active account details: Real authenticated InsForge user takes precedence over demo localStorage
+  const activeUser = authUser
+    ? {
+        name: authUser.fullName || profile?.full_name || authUser.email,
+        email: authUser.email,
+        role: (accountType || "company") as "talent" | "company",
+        isReal: true,
+      }
+    : demoUser
+    ? {
+        name: demoUser.name,
+        email: demoUser.email,
+        role: (demoUser.role === "designer" ? "talent" : "company") as "talent" | "company",
+        isReal: false,
+      }
+    : null;
+
+  const userInitials = activeUser
+    ? activeUser.name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2) || (activeUser.role === "talent" ? "TL" : "CO")
+    : "";
 
   return (
     <>
@@ -83,7 +142,7 @@ export const Navbar: React.FC = () => {
             </nav>
 
             {/* DESKTOP RIGHT ACTIONS */}
-            <div className="hidden md:flex items-center gap-4">
+            <div className="hidden md:flex items-center gap-3.5">
               {/* Search trigger */}
               <button
                 type="button"
@@ -94,32 +153,155 @@ export const Navbar: React.FC = () => {
                 <Search className="w-4 h-4" />
               </button>
 
-              {/* Dashboard / Sign In */}
-              {currentUser ? (
-                <Link
-                  href={
-                    currentUser.role === "designer"
-                      ? "/dashboard/designer"
-                      : "/dashboard/company"
-                  }
-                  className="flex items-center gap-1.5 text-sm font-medium text-[#76665F] hover:text-[#38241F] px-3 py-2 rounded-md hover:bg-[#FFF9F3] transition-colors"
-                >
-                  <LayoutDashboard className="w-3.5 h-3.5 text-[#541719]" />
-                  <span>Dashboard</span>
-                </Link>
+              {/* AUTHENTICATION STATE */}
+              {authLoading ? (
+                <div className="w-20 h-8 rounded-full bg-[#E6D8CF]/40 animate-pulse" />
+              ) : activeUser ? (
+                /* LOGGED-IN ACCOUNT DROPDOWN */
+                <div className="relative" ref={dropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setAccountDropdownOpen(!accountDropdownOpen)}
+                    className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-full bg-white border border-[#E6D8CF] hover:border-[#541719]/40 transition-all text-left shadow-2xs group"
+                  >
+                    <div className="w-7 h-7 rounded-full bg-[#541719] text-[#FFF9F3] font-mono text-[11px] font-bold flex items-center justify-center shrink-0">
+                      {userInitials}
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-serif font-bold text-espresso max-w-[110px] truncate group-hover:text-accent transition-colors">
+                        {activeUser.name}
+                      </span>
+                      <span
+                        className={`px-1.5 py-0.5 rounded-md text-[9px] font-mono font-bold tracking-wider uppercase ${
+                          activeUser.role === "talent"
+                            ? "bg-[#541719]/10 text-[#541719]"
+                            : "bg-emerald-50 text-emerald-800"
+                        }`}
+                      >
+                        {activeUser.role === "talent" ? "Talent" : "Company"}
+                      </span>
+                    </div>
+
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 text-taupe transition-transform duration-200 ${
+                        accountDropdownOpen ? "rotate-180 text-accent" : ""
+                      }`}
+                    />
+                  </button>
+
+                  {/* DROPDOWN MENU */}
+                  {accountDropdownOpen && (
+                    <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-white border border-[#E6D8CF] shadow-card py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+                      <div className="px-4 py-2.5 border-b border-[#E6D8CF]">
+                        <p className="text-xs font-serif font-bold text-espresso truncate">
+                          {activeUser.name}
+                        </p>
+                        <p className="text-[11px] font-mono text-muted truncate">
+                          {activeUser.email}
+                        </p>
+                      </div>
+
+                      <div className="py-1">
+                        <Link
+                          href={
+                            activeUser.role === "talent"
+                              ? "/dashboard/designer"
+                              : "/dashboard/company"
+                          }
+                          onClick={() => setAccountDropdownOpen(false)}
+                          className="flex items-center gap-2.5 px-4 py-2 text-xs font-sans text-espresso hover:bg-[#FFF9F3] hover:text-accent transition-colors"
+                        >
+                          <LayoutDashboard className="w-3.5 h-3.5 text-accent" />
+                          <span>Workspace Dashboard</span>
+                        </Link>
+
+                        {activeUser.role === "company" ? (
+                          <>
+                            <Link
+                              href="/dashboard/company/projects"
+                              onClick={() => setAccountDropdownOpen(false)}
+                              className="flex items-center gap-2.5 px-4 py-2 text-xs font-sans text-espresso hover:bg-[#FFF9F3] hover:text-accent transition-colors"
+                            >
+                              <FolderKanban className="w-3.5 h-3.5 text-taupe" />
+                              <span>Project Briefs</span>
+                            </Link>
+                            <Link
+                              href="/dashboard/company/shortlist"
+                              onClick={() => setAccountDropdownOpen(false)}
+                              className="flex items-center gap-2.5 px-4 py-2 text-xs font-sans text-espresso hover:bg-[#FFF9F3] hover:text-accent transition-colors"
+                            >
+                              <Heart className="w-3.5 h-3.5 text-taupe" />
+                              <span>Candidate Shortlist</span>
+                            </Link>
+                          </>
+                        ) : (
+                          <>
+                            <Link
+                              href="/dashboard/designer/portfolio"
+                              onClick={() => setAccountDropdownOpen(false)}
+                              className="flex items-center gap-2.5 px-4 py-2 text-xs font-sans text-espresso hover:bg-[#FFF9F3] hover:text-accent transition-colors"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-taupe" />
+                              <span>Case Studies & Portfolio</span>
+                            </Link>
+                            <Link
+                              href="/dashboard/designer/opportunities"
+                              onClick={() => setAccountDropdownOpen(false)}
+                              className="flex items-center gap-2.5 px-4 py-2 text-xs font-sans text-espresso hover:bg-[#FFF9F3] hover:text-accent transition-colors"
+                            >
+                              <Briefcase className="w-3.5 h-3.5 text-taupe" />
+                              <span>Mandate Opportunities</span>
+                            </Link>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="pt-1 border-t border-[#E6D8CF]">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setAccountDropdownOpen(false);
+                            if (activeUser.isReal) {
+                              await logout();
+                            } else {
+                              localStorage.removeItem("brandroom_user");
+                              window.dispatchEvent(new Event("brandroom_user_updated"));
+                              window.location.href = "/";
+                            }
+                          }}
+                          className="flex items-center gap-2.5 w-full px-4 py-2 text-xs font-sans text-red-700 hover:bg-red-50 transition-colors text-left font-medium"
+                        >
+                          <LogOut className="w-3.5 h-3.5 text-red-600" />
+                          <span>Sign Out</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               ) : (
-                <Link
-                  href="/login"
-                  className="text-sm font-medium text-[#76665F] hover:text-[#38241F] px-3 py-2 rounded-md hover:bg-[#FFF9F3] transition-colors"
-                >
-                  Sign In
-                </Link>
+                /* LOGGED-OUT BUTTONS: SIGN IN & SIGN UP */
+                <div className="flex items-center gap-2.5">
+                  <Link
+                    href="/login"
+                    className="text-xs font-sans font-semibold text-[#76665F] hover:text-[#38241F] px-3 py-2 rounded-full hover:bg-[#FFF9F3] transition-colors"
+                  >
+                    Sign In
+                  </Link>
+
+                  <Link
+                    href="/signup"
+                    className="inline-flex items-center justify-center px-4 py-2 text-xs font-sans font-semibold rounded-full border border-[#541719] text-[#541719] hover:bg-[#541719] hover:text-[#FFF9F3] transition-all shadow-xs"
+                  >
+                    Sign Up
+                  </Link>
+                </div>
               )}
 
               {/* Start a Project CTA */}
               <Link
                 href="/start-project"
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-full bg-[#541719] text-[#FFF9F3] hover:bg-[#3E1012] active:scale-95 transition-all shadow-burgundy focus:outline-none focus-visible:ring-2 focus-visible:ring-[#541719]"
+                className="inline-flex items-center justify-center gap-1.5 px-4.5 py-2 text-xs font-semibold rounded-full bg-[#541719] text-[#FFF9F3] hover:bg-[#3E1012] active:scale-95 transition-all shadow-burgundy focus:outline-none focus-visible:ring-2 focus-visible:ring-[#541719]"
               >
                 <span>Start a Project</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -151,7 +333,45 @@ export const Navbar: React.FC = () => {
         {/* MOBILE NAVIGATION DRAWER */}
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-[#E6D8CF] bg-[#FFF9F3] px-5 pt-4 pb-6 space-y-4 shadow-card animate-in slide-in-from-top-2 duration-200">
-            <div className="flex flex-col space-y-2">
+            {/* LOGGED IN ACCOUNT BANNER ON MOBILE */}
+            {activeUser && (
+              <div className="p-3 rounded-2xl bg-white border border-[#E6D8CF] flex items-center justify-between">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-[#541719] text-[#FFF9F3] font-mono text-xs font-bold flex items-center justify-center shrink-0">
+                    {userInitials}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-serif font-bold text-espresso truncate">
+                      {activeUser.name}
+                    </p>
+                    <p className="text-[10px] font-mono text-muted uppercase">
+                      {activeUser.role} Account
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setMobileMenuOpen(false);
+                    if (activeUser.isReal) {
+                      await logout();
+                    } else {
+                      localStorage.removeItem("brandroom_user");
+                      window.dispatchEvent(new Event("brandroom_user_updated"));
+                      window.location.href = "/";
+                    }
+                  }}
+                  className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg text-xs font-mono"
+                  title="Sign Out"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {/* LINKS */}
+            <div className="flex flex-col space-y-1">
               {navLinks.map((link) => {
                 const isActive =
                   link.href === "/"
@@ -171,20 +391,37 @@ export const Navbar: React.FC = () => {
               })}
             </div>
 
-            <div className="pt-4 border-t border-[#E6D8CF] space-y-3">
-              <Link
-                href={
-                  currentUser?.role === "designer"
-                    ? "/dashboard/designer"
-                    : currentUser
-                    ? "/dashboard/company"
-                    : "/login"
-                }
-                className="flex items-center justify-center gap-2 w-full py-2.5 text-xs tracking-wider font-semibold border border-[#E6D8CF] rounded-full bg-white text-[#38241F]"
-              >
-                <LayoutDashboard className="w-4 h-4 text-[#541719]" />
-                <span>{currentUser ? "Go to Dashboard" : "Sign In"}</span>
-              </Link>
+            {/* ACTION BUTTONS ON MOBILE */}
+            <div className="pt-3 border-t border-[#E6D8CF] space-y-2.5">
+              {activeUser ? (
+                <Link
+                  href={
+                    activeUser.role === "talent"
+                      ? "/dashboard/designer"
+                      : "/dashboard/company"
+                  }
+                  className="flex items-center justify-center gap-2 w-full py-2.5 text-xs tracking-wider font-semibold border border-[#E6D8CF] rounded-full bg-white text-[#38241F]"
+                >
+                  <LayoutDashboard className="w-4 h-4 text-[#541719]" />
+                  <span>Go to Workspace Dashboard</span>
+                </Link>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <Link
+                    href="/login"
+                    className="flex items-center justify-center py-2.5 text-xs tracking-wider font-semibold border border-[#E6D8CF] rounded-full bg-white text-[#38241F]"
+                  >
+                    Sign In
+                  </Link>
+                  <Link
+                    href="/signup"
+                    className="flex items-center justify-center py-2.5 text-xs tracking-wider font-semibold border border-[#541719] rounded-full text-[#541719] bg-[#FFF9F3]"
+                  >
+                    Sign Up
+                  </Link>
+                </div>
+              )}
+
               <Link
                 href="/start-project"
                 className="flex items-center justify-center gap-2 w-full py-2.5 text-xs tracking-wider font-bold bg-[#541719] text-[#FFF9F3] rounded-full shadow-burgundy"

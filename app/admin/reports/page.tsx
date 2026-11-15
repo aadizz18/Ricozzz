@@ -16,7 +16,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { Department } from "@/lib/admin/types";
-import { getReports, getDepartments, exportReportsToCsv } from "@/lib/demo";
+import { adminApi } from "@/lib/admin/apiClient";
 
 export default function AdminReportsPage() {
   const [data, setData] = useState<any>(null);
@@ -25,15 +25,17 @@ export default function AdminReportsPage() {
   const [selectedRange, setSelectedRange] = useState("30d");
   const [loading, setLoading] = useState(true);
 
-  const fetchReports = () => {
+  const fetchReports = async () => {
     try {
       setLoading(true);
-      const reports = getReports(selectedDept || undefined, selectedRange);
-      const depts = getDepartments();
-      setData(reports);
-      setDepartments(depts);
+      const [reportsRes, deptsRes] = await Promise.all([
+        adminApi.reports.get(selectedDept || undefined, selectedRange),
+        adminApi.departments.list(),
+      ]);
+      setData(reportsRes.reports || null);
+      setDepartments(deptsRes.departments || []);
     } catch (err) {
-      console.error("Reports error in demo mode:", err);
+      console.error("Reports error:", err);
     } finally {
       setLoading(false);
     }
@@ -44,7 +46,7 @@ export default function AdminReportsPage() {
   }, [selectedDept, selectedRange]);
 
   const handleExport = (type: string) => {
-    exportReportsToCsv(type);
+    window.location.href = adminApi.reports.exportUrl(type);
   };
 
   if (loading) {

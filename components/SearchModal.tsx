@@ -164,7 +164,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => 
                 {filteredDesigners.map((d) => (
                   <Link
                     key={d.id}
-                    href={`/designers/${d.id}`}
+                    href={`/talent/${d.id}`}
                     onClick={onClose}
                     className="flex items-center justify-between p-3 rounded-xl hover:bg-[#FFF9F3] transition-colors group"
                   >

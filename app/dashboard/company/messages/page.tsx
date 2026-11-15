@@ -157,7 +157,7 @@ export default function MessagesPage() {
                     </div>
 
                     <Link
-                      href={`/designers/${activeConversation.participantId}`}
+                      href={`/talent/${activeConversation.participantId}`}
                       className="text-xs font-mono text-brand-secondary hover:text-accent hidden sm:inline transition-colors"
                     >
                       View Profile

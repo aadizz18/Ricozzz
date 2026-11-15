@@ -134,7 +134,7 @@ export const MatchingVisual: React.FC = () => {
               <span>Verified alignment across design styles, day rates, and immediate bandwidth.</span>
             </div>
             <Link
-              href="/designers/des-1"
+              href="/talent/des-1"
               className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-accent hover:text-accent-hover shrink-0"
             >
               <span>Inspect candidate profile</span>

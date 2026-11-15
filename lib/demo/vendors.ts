@@ -3,9 +3,11 @@
  */
 
 import { Vendor, VendorDocument, AdminUser } from "@/lib/admin/types";
-import { getStorageItem, setStorageItem, STORAGE_KEYS } from "./storage";
+import { getStorageItem, setStorageItem, STORAGE_KEYS, isBrowser } from "./storage";
 import { DEFAULT_VENDORS, DEFAULT_VENDOR_DOCS, DEFAULT_USERS } from "./seedData";
 import { logAuditEvent } from "./audit";
+
+let vendorsSyncing = false;
 
 export function getVendors(filters?: {
   stage?: string;
@@ -13,6 +15,27 @@ export function getVendors(filters?: {
   category?: string;
   search?: string;
 }): Vendor[] {
+  // Trigger background server sync
+  if (isBrowser() && !vendorsSyncing) {
+    vendorsSyncing = true;
+    const query = new URLSearchParams();
+    if (filters?.stage) query.set("stage", filters.stage);
+    if (filters?.status) query.set("status", filters.status);
+    if (filters?.search) query.set("search", filters.search);
+
+    fetch(`/api/admin/vendors?${query.toString()}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && Array.isArray(data.vendors) && data.vendors.length > 0) {
+          setStorageItem(STORAGE_KEYS.VENDORS, data.vendors);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        vendorsSyncing = false;
+      });
+  }
+
   let vendors = getStorageItem<Vendor[]>(STORAGE_KEYS.VENDORS, DEFAULT_VENDORS);
   const docs = getStorageItem<VendorDocument[]>(STORAGE_KEYS.VENDOR_DOCS, DEFAULT_VENDOR_DOCS);
   const users = getStorageItem<AdminUser[]>(STORAGE_KEYS.USERS, DEFAULT_USERS);
@@ -107,6 +130,29 @@ export function createVendor(data: Partial<Vendor>): Vendor {
 
   logAuditEvent("vendor.create", "vendor", newVendor.id, `Registered creative vendor partner "${newVendor.name}"`);
 
+  if (isBrowser()) {
+    fetch("/api/admin/vendors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: newVendor.name,
+        serviceCategory: newVendor.serviceCategory,
+        contactName: newVendor.contactName,
+        contactEmail: newVendor.contactEmail,
+        phone: newVendor.phone,
+        coordinatorId: newVendor.assignedCoordinatorId,
+        notes: newVendor.notes,
+      }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((resData) => {
+        if (resData?.vendorId) {
+          newVendor.id = resData.vendorId;
+        }
+      })
+      .catch(() => {});
+  }
+
   return newVendor;
 }
 
@@ -131,6 +177,14 @@ export function updateVendor(id: string, data: Partial<Vendor>): Vendor | null {
 
   logAuditEvent("vendor.update", "vendor", id, `Updated vendor partner "${updated.name}"`);
 
+  if (isBrowser()) {
+    fetch(`/api/admin/vendors/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).catch(() => {});
+  }
+
   return updated;
 }
 
@@ -146,6 +200,13 @@ export function deleteVendor(id: string): boolean {
   setStorageItem(STORAGE_KEYS.VENDOR_DOCS, filteredDocs);
 
   logAuditEvent("vendor.delete", "vendor", id, `Deleted vendor partner "${target?.name || id}"`);
+
+  if (isBrowser()) {
+    fetch(`/api/admin/vendors/${id}`, {
+      method: "DELETE",
+    }).catch(() => {});
+  }
+
   return true;
 }
 
@@ -168,7 +229,6 @@ export function verifyVendorDocument(
 
   setStorageItem(STORAGE_KEYS.VENDOR_DOCS, docs);
 
-  // If all documents verified, update vendor verification status to verified
   const vDocs = docs.filter((d) => d.vendorId === vendorId);
   const allVerified = vDocs.length > 0 && vDocs.every((d) => d.isVerified);
   if (allVerified) {
@@ -183,6 +243,14 @@ export function verifyVendorDocument(
     docId,
     `Marked document "${docs[idx].fileName}" as ${isVerified ? "VERIFIED" : "UNVERIFIED"}`
   );
+
+  if (isBrowser()) {
+    fetch(`/api/admin/vendors/${vendorId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ toggleDocId: docId, isVerified }),
+    }).catch(() => {});
+  }
 
   return docs[idx];
 }

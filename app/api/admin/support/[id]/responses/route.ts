@@ -22,15 +22,15 @@ export async function POST(
     }
 
     const db = getDb();
-    const responseId = `tr-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`;
+    const responseId = crypto.randomUUID();
     const now = new Date().toISOString();
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO ticket_responses (id, ticket_id, user_id, message, is_internal_note, created_at)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(responseId, id, user.id, message.trim(), isInternalNote ? 1 : 0, now);
+    `).run(responseId, id, user.id, message.trim(), Boolean(isInternalNote), now);
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: user,
       action: "TICKET_RESPONSE_ADDED",
       entityType: "support_ticket",

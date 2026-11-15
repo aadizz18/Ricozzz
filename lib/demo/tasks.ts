@@ -3,9 +3,12 @@
  */
 
 import { Task, TaskComment, AdminUser, Department } from "@/lib/admin/types";
-import { getStorageItem, setStorageItem, STORAGE_KEYS } from "./storage";
+import { getStorageItem, setStorageItem, STORAGE_KEYS, isBrowser } from "./storage";
 import { DEFAULT_TASKS, DEFAULT_TASK_COMMENTS, DEFAULT_USERS, DEFAULT_DEPARTMENTS } from "./seedData";
 import { logAuditEvent } from "./audit";
+
+// Background sync lock
+let tasksSyncing = false;
 
 export function getTasks(filters?: {
   departmentId?: string;
@@ -14,6 +17,31 @@ export function getTasks(filters?: {
   assigneeId?: string;
   search?: string;
 }): Task[] {
+  // Trigger background server sync
+  if (isBrowser() && !tasksSyncing) {
+    tasksSyncing = true;
+    const query = new URLSearchParams();
+    if (filters?.departmentId) query.set("departmentId", filters.departmentId);
+    if (filters?.status) query.set("status", filters.status);
+    if (filters?.priority) query.set("priority", filters.priority);
+    if (filters?.assigneeId) query.set("assigneeId", filters.assigneeId);
+    if (filters?.search) query.set("search", filters.search);
+
+    fetch(`/api/admin/tasks?${query.toString()}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && Array.isArray(data.tasks) && data.tasks.length > 0) {
+          const current = getStorageItem<Task[]>(STORAGE_KEYS.TASKS, []);
+          // Merge server tasks with local
+          const merged = [...data.tasks];
+          setStorageItem(STORAGE_KEYS.TASKS, merged);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        tasksSyncing = false;
+      });
+  }
   let tasks = getStorageItem<Task[]>(STORAGE_KEYS.TASKS, DEFAULT_TASKS);
   const comments = getStorageItem<TaskComment[]>(STORAGE_KEYS.TASK_COMMENTS, DEFAULT_TASK_COMMENTS);
   const users = getStorageItem<AdminUser[]>(STORAGE_KEYS.USERS, DEFAULT_USERS);
@@ -108,6 +136,31 @@ export function createTask(data: Partial<Task>): Task {
 
   logAuditEvent("task.create", "task", newTask.id, `Created task "${newTask.title}" [${newTask.priority.toUpperCase()}]`);
 
+  // Server-side persistent synchronization
+  if (isBrowser()) {
+    fetch("/api/admin/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: newTask.title,
+        description: newTask.description,
+        departmentId: newTask.departmentId,
+        assigneeId: newTask.assigneeId,
+        priority: newTask.priority,
+        dueDate: newTask.dueDate,
+        blockerNote: newTask.blockerNote,
+        isEscalated: newTask.isEscalated,
+      }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((resData) => {
+        if (resData?.task?.id) {
+          newTask.id = resData.task.id;
+        }
+      })
+      .catch(() => {});
+  }
+
   return newTask;
 }
 
@@ -146,6 +199,15 @@ export function updateTask(id: string, data: Partial<Task>): Task | null {
     `Updated task "${updated.title}" (Status: ${updated.status}, Priority: ${updated.priority})`
   );
 
+  // Server-side persistent synchronization
+  if (isBrowser()) {
+    fetch(`/api/admin/tasks/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).catch(() => {});
+  }
+
   return updated;
 }
 
@@ -161,6 +223,14 @@ export function deleteTask(id: string): boolean {
   setStorageItem(STORAGE_KEYS.TASK_COMMENTS, filteredComments);
 
   logAuditEvent("task.delete", "task", id, `Deleted task "${target?.title || id}"`);
+
+  // Server-side persistent synchronization
+  if (isBrowser()) {
+    fetch(`/api/admin/tasks/${id}`, {
+      method: "DELETE",
+    }).catch(() => {});
+  }
+
   return true;
 }
 
@@ -191,6 +261,15 @@ export function addTaskComment(
   }
 
   logAuditEvent("task.comment", "task_comment", newComment.id, `Added comment on task ${taskId}`);
+
+  // Server-side persistent synchronization
+  if (isBrowser()) {
+    fetch(`/api/admin/tasks/${taskId}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ comment, isBlockerUpdate }),
+    }).catch(() => {});
+  }
 
   return newComment;
 }

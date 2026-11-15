@@ -247,7 +247,7 @@ export default function CompanyDashboardPage() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
                         <Link
-                          href={`/designers/${designer.id}`}
+                          href={`/talent/${designer.id}`}
                           className="font-serif text-base font-normal text-espresso group-hover:text-accent transition-colors truncate"
                         >
                           {designer.name}
@@ -277,7 +277,7 @@ export default function CompanyDashboardPage() {
                   <div className="flex flex-col items-end gap-3 shrink-0">
                     <MatchScore score={score} size="sm" />
                     <Link
-                      href={`/designers/${designer.id}`}
+                      href={`/talent/${designer.id}`}
                       className="text-xs font-mono text-muted hover:text-accent transition-colors font-semibold"
                     >
                       View

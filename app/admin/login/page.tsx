@@ -3,7 +3,8 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Shield, Lock, Mail, AlertCircle, Sparkles, CheckCircle2, Info, ArrowRight } from "lucide-react";
-import { demoLogin, getDemoSession, DEMO_PRESET_ACCOUNTS } from "@/lib/demo";
+import { ADMIN_PRESET_ACCOUNTS } from "@/lib/admin/types";
+import { adminApi } from "@/lib/admin/apiClient";
 
 function AdminLoginForm() {
   const router = useRouter();
@@ -15,60 +16,90 @@ function AdminLoginForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // If already logged in with a demo session, redirect to /admin automatically
+  // If already authenticated via backend cookie / session, redirect to /admin automatically
   useEffect(() => {
-    const session = getDemoSession();
-    if (session) {
-      const destination = fromParam && fromParam.startsWith("/admin") && fromParam !== "/admin/login"
-        ? fromParam
-        : "/admin";
-      router.push(destination);
-    }
+    let mounted = true;
+    adminApi.auth.me().then((res) => {
+      if (mounted && res.success && res.user) {
+        const destination = fromParam && fromParam.startsWith("/admin") && fromParam !== "/admin/login"
+          ? fromParam
+          : "/admin";
+        router.push(destination);
+      }
+    }).catch(() => {});
+    return () => {
+      mounted = false;
+    };
   }, [router, fromParam]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
     try {
-      const result = demoLogin(email, password);
-      if (!result.success || !result.user) {
-        setError(result.error || "Simulated login failed. Please select a demo account.");
-        setLoading(false);
+      // Authoritative Backend Authentication via InsForge & PostgreSQL
+      const res = await adminApi.auth.login({ email: email.trim(), password });
+
+      if (res.success && res.user) {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("ricoz_admin_user", JSON.stringify(res.user));
+          if (res.sessionToken) {
+            document.cookie = `ricoz_admin_session=${res.sessionToken}; path=/; max-age=604800; SameSite=Lax`;
+          }
+        }
+
+        const targetDestination =
+          fromParam && fromParam.startsWith("/admin") && fromParam !== "/admin/login"
+            ? fromParam
+            : "/admin";
+
+        router.push(targetDestination);
+        router.refresh();
         return;
       }
 
-      const targetDestination =
-        fromParam && fromParam.startsWith("/admin") && fromParam !== "/admin/login"
-          ? fromParam
-          : "/admin";
-
-      router.push(targetDestination);
-      router.refresh();
-    } catch (err) {
-      console.error("Demo login error:", err);
-      setError("An unexpected error occurred during demo login.");
+      setError((res as any).error || "Authentication failed. Please verify your administrative credentials.");
+    } catch (err: any) {
+      console.error("Login error:", err);
+      setError(err.message || "An unexpected error occurred. Please verify your connection.");
+    } finally {
       setLoading(false);
     }
   };
 
-  const handleQuickAccess = (presetEmail: string) => {
+  const handleQuickAccess = async (presetEmail: string) => {
     setEmail(presetEmail);
     setPassword("Ricozhoo@123");
     setError(null);
     setLoading(true);
 
-    const result = demoLogin(presetEmail, "Ricozhoo@123");
-    if (result.success) {
-      const targetDestination =
-        fromParam && fromParam.startsWith("/admin") && fromParam !== "/admin/login"
-          ? fromParam
-          : "/admin";
-      router.push(targetDestination);
-      router.refresh();
-    } else {
-      setError(result.error || "Failed to log in with selected demo account.");
+    try {
+      const res = await adminApi.auth.login({ email: presetEmail.trim(), password: "Ricozhoo@123" });
+
+      if (res.success && res.user) {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("ricoz_admin_user", JSON.stringify(res.user));
+          if (res.sessionToken) {
+            document.cookie = `ricoz_admin_session=${res.sessionToken}; path=/; max-age=604800; SameSite=Lax`;
+          }
+        }
+
+        const targetDestination =
+          fromParam && fromParam.startsWith("/admin") && fromParam !== "/admin/login"
+            ? fromParam
+            : "/admin";
+
+        router.push(targetDestination);
+        router.refresh();
+        return;
+      }
+
+      setError((res as any).error || "Failed to log in with selected account.");
+    } catch (err: any) {
+      console.error("Quick access error:", err);
+      setError(err.message || "Authentication error.");
+    } finally {
       setLoading(false);
     }
   };
@@ -130,7 +161,7 @@ function AdminLoginForm() {
             </div>
 
             <div className="grid grid-cols-1 gap-2">
-              {DEMO_PRESET_ACCOUNTS.slice(0, 3).map((acc) => (
+              {ADMIN_PRESET_ACCOUNTS.slice(0, 3).map((acc) => (
                 <button
                   key={acc.email}
                   type="button"
@@ -212,14 +243,14 @@ function AdminLoginForm() {
                   <span>Entering Control Center...</span>
                 </>
               ) : (
-                <span>Access Management Console (Demo)</span>
+                <span>Access Management Console</span>
               )}
             </button>
           </form>
 
           <div className="pt-4 border-t border-white/5 space-y-2 text-center">
             <p className="text-[11px] text-slate-500 font-mono">
-              Demo Access &bull; Stored in browser LocalStorage &bull; No server needed
+              InsForge Live Backend &bull; PostgreSQL Real Persistence &bull; Enterprise RBAC
             </p>
           </div>
         </div>

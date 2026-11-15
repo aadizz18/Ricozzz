@@ -91,10 +91,10 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
           )}
         </Link>
 
-        {/* Demo Mode Pill */}
-        <span className="hidden md:inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-mono font-medium">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-          PROTOTYPE DEMO
+        {/* InsForge Live Backend Status Pill */}
+        <span className="hidden md:inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-mono font-medium">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          INSFORGE LIVE
         </span>
 
         {/* Public platform return link */}

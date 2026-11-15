@@ -8,7 +8,6 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await requirePermission("tasks.view", req);
     if ("errorResponse" in auth) return auth.errorResponse;
-    const { user } = auth;
 
     const db = getDb();
     const { searchParams } = new URL(req.url);
@@ -17,6 +16,14 @@ export async function GET(req: NextRequest) {
     const priority = searchParams.get("priority");
     const assigneeId = searchParams.get("assigneeId");
     const search = searchParams.get("search")?.toLowerCase().trim();
+
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (departmentId && !UUID_REGEX.test(departmentId)) {
+      return NextResponse.json({ success: false, error: "Invalid departmentId format." }, { status: 400 });
+    }
+    if (assigneeId && !UUID_REGEX.test(assigneeId)) {
+      return NextResponse.json({ success: false, error: "Invalid assigneeId format." }, { status: 400 });
+    }
 
     let query = `
       SELECT 
@@ -70,7 +77,7 @@ export async function GET(req: NextRequest) {
       END, 
       t.due_date ASC`;
 
-    const tasks = db.prepare(query).all(...params);
+    const tasks = await db.prepare(query).all(...params);
 
     return NextResponse.json({
       success: true,
@@ -99,18 +106,15 @@ export async function POST(req: NextRequest) {
     }
 
     const db = getDb();
-    const taskId = `tsk-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`;
-    const now = new Date().toISOString();
+    const taskId = crypto.randomUUID();
 
-    const insert = db.prepare(`
+    await db.prepare(`
       INSERT INTO tasks (
         id, title, description, department_id, assignee_id, creator_id,
         priority, status, blocker_note, is_escalated, due_date, completed_at,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'todo', ?, ?, ?, NULL, ?, ?)
-    `);
-
-    insert.run(
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'todo', ?, ?, ?, NULL, NOW(), NOW())
+    `).run(
       taskId,
       title.trim(),
       (description || "").trim(),
@@ -119,13 +123,11 @@ export async function POST(req: NextRequest) {
       user.id,
       priority,
       blockerNote ? blockerNote.trim() : null,
-      isEscalated ? 1 : 0,
-      dueDate,
-      now,
-      now
+      Boolean(isEscalated),
+      dueDate
     );
 
-    recordAuditLog({
+    await recordAuditLog({
       actor: user,
       action: "TASK_CREATED",
       entityType: "task",
@@ -136,17 +138,16 @@ export async function POST(req: NextRequest) {
 
     // Create notification if assigned to another user
     if (assigneeId && assigneeId !== user.id) {
-      const notifId = `ntf-${Date.now()}`;
-      db.prepare(`
+      const notifId = crypto.randomUUID();
+      await db.prepare(`
         INSERT INTO notifications (id, user_id, title, message, type, link, is_read, created_at)
-        VALUES (?, ?, ?, ?, 'task_assigned', ?, 0, ?)
+        VALUES (?, ?, ?, ?, 'task_assigned', ?, false, NOW())
       `).run(
         notifId,
         assigneeId,
         "New Task Assignment",
         `${user.fullName} assigned you task: "${title}" (Due: ${dueDate})`,
-        `/admin/tasks?id=${taskId}`,
-        now
+        `/admin/tasks?id=${taskId}`
       );
     }
 

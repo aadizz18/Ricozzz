@@ -24,12 +24,12 @@ Brandroom is a premium enterprise creative talent platform connecting venture-ba
    - **Location / Fit**: 5%
    Provides granular percentages and key strength factors.
 
-2. **Talent Discovery & Filtering (`/designers`)**:
+2. **Talent Discovery & Filtering (`/talent`)**:
    - Multi-criteria sidebar and mobile drawer filtering by Role, Experience, Sector, Availability, Aesthetic Style, and Budget Tier.
    - Real-time search across names, skills, and sectors.
    - Sorting by Recommended Match, Seniority, and Availability.
 
-3. **Portfolio-First Profiles (`/designers/[id]`)**:
+3. **Portfolio-First Profiles (`/talent/[id]`)**:
    - Monogram avatars, career trajectory timeline, skill pills, verified senior badge.
    - Interactive portfolio case studies modal with enterprise challenge, solution, and commercial impact metrics.
    - Direct Contact modal and Shortlist toggle.
@@ -56,8 +56,8 @@ Brandroom is a premium enterprise creative talent platform connecting venture-ba
 
 ### Public Routes
 - `/` — Enterprise Landing Page (Hero, Stats, Disciplines, 4-stage How It Works, Featured Roster, Value Props, CTAs)
-- `/designers` — Talent Discovery Directory with multi-criteria filters & search
-- `/designers/[id]` — Detailed Designer Profile with case studies & contact modal
+- `/talent` — Talent Discovery Directory with multi-criteria filters & search
+- `/talent/[id]` — Detailed Designer Profile with case studies & contact modal
 - `/how-it-works` — Rebranding methodology, timelines, and vetting standards
 - `/companies` — Enterprise client benefits and comparison matrix
 - `/creatives` — Network admission criteria for Creative Directors
