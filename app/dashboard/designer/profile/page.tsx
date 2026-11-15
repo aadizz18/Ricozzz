@@ -26,6 +26,7 @@ export default function DesignerProfileEditorPage() {
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   useEffect(() => {
+    // 1. Initial prototype fallback
     const list = getDesigners();
     if (list.length > 0) {
       const d = list[0]; // Alex Morgan
@@ -42,6 +43,25 @@ export default function DesignerProfileEditorPage() {
       setIndustries(d.industries);
       setStyles(d.styles);
     }
+
+    // 2. Load authoritative profile from PostgreSQL
+    fetch("/api/user/profile")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && data?.profile) {
+          const p = data.profile;
+          const details = p.details || {};
+          if (p.full_name) setName(p.full_name);
+          if (details.headline) setTitle(details.headline);
+          if (details.bio) setBio(details.bio);
+          if (details.location) setLocation(details.location);
+          if (details.years_experience) setYearsExperience(Number(details.years_experience));
+          if (details.hourly_rate) setDayRate(details.hourly_rate);
+          if (details.availability) setAvailability(details.availability as AvailabilityStatus);
+          if (Array.isArray(details.skills)) setSkills(details.skills);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   if (!designer) return null;
@@ -54,8 +74,29 @@ export default function DesignerProfileEditorPage() {
     }
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Persist to PostgreSQL backend
+    try {
+      await fetch("/api/user/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: name.trim(),
+          headline: title.trim(),
+          bio: bio.trim(),
+          location: location.trim(),
+          yearsExperience: Number(yearsExperience),
+          hourlyRate: dayRate.trim(),
+          availability,
+          skills,
+        }),
+      });
+    } catch (err) {
+      console.warn("Backend profile sync notice:", err);
+    }
+
     const updated: Designer = {
       ...designer,
       name,

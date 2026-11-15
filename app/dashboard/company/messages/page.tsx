@@ -54,7 +54,7 @@ export default function MessagesPage() {
     if (!inputVal.trim() || !activeConvId) return;
 
     const user = getCurrentUser();
-    sendMessage(activeConvId, inputVal.trim(), user.name || "Alex Vance");
+    sendMessage(activeConvId, inputVal.trim(), user?.name || "Alex Vance");
     setInputVal("");
     setMessages(getMessages(activeConvId));
   };

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserSession, getFullUserProfile } from "@/lib/auth/userAuth";
 import { getDb } from "@/lib/admin/db";
 
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/user/profile
  * Returns the currently authenticated user's full profile

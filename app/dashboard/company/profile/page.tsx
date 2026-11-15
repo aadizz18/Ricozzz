@@ -22,15 +22,55 @@ export default function CompanyProfilePage() {
   );
   const [savedSuccess, setSavedSuccess] = useState(false);
 
+  const [loading, setLoading] = useState(false);
+
   useEffect(() => {
+    // 1. Check local storage fallback first
     const current = getCurrentUser();
-    setUser(current);
-    if (current.companyName) setCompanyName(current.companyName);
-    if (current.title) setTitle(current.title);
+    if (current) {
+      setUser(current);
+      if (current.companyName) setCompanyName(current.companyName);
+      if (current.title) setTitle(current.title);
+    }
+
+    // 2. Load authoritative profile from PostgreSQL via /api/user/profile
+    fetch("/api/user/profile")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && data?.profile) {
+          const p = data.profile;
+          const details = p.details || {};
+          if (details.company_name) setCompanyName(details.company_name);
+          if (details.contact_name || p.full_name) setTitle(details.contact_name || p.full_name);
+          if (details.industry) setIndustry(details.industry as Industry);
+          if (details.company_size) setSize(details.company_size);
+        }
+      })
+      .catch(() => {});
   }, []);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
+
+    // Save to PostgreSQL backend
+    try {
+      await fetch("/api/user/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: title.trim(),
+          companyName: companyName.trim(),
+          contactName: title.trim(),
+          industry,
+          companySize: size,
+        }),
+      });
+    } catch (err) {
+      console.warn("Backend profile sync notice:", err);
+    }
+
+    // Update client storage
     const updated: User = {
       ...user,
       companyName,
@@ -38,6 +78,7 @@ export default function CompanyProfilePage() {
     };
     setCurrentUser(updated);
     setUser(updated);
+    setLoading(false);
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 3000);
   };

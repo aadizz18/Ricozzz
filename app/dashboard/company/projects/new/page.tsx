@@ -30,7 +30,7 @@ export default function CreateProjectPage() {
 
   React.useEffect(() => {
     const u = getCurrentUser();
-    if (u.companyName) setCompanyName(u.companyName);
+    if (u?.companyName) setCompanyName(u.companyName);
   }, []);
 
   const [rebrandingGoals, setRebrandingGoals] = useState<string[]>([

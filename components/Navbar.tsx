@@ -76,20 +76,13 @@ export const Navbar: React.FC = () => {
     { label: "For Creatives", href: "/creatives" },
   ];
 
-  // Resolve active account details: Real authenticated InsForge user takes precedence over demo localStorage
+  // Resolve active account details: Real authenticated InsForge user only
   const activeUser = authUser
     ? {
         name: authUser.fullName || profile?.full_name || authUser.email,
         email: authUser.email,
         role: (accountType || "company") as "talent" | "company",
         isReal: true,
-      }
-    : demoUser
-    ? {
-        name: demoUser.name,
-        email: demoUser.email,
-        role: (demoUser.role === "designer" ? "talent" : "company") as "talent" | "company",
-        isReal: false,
       }
     : null;
 
@@ -262,13 +255,7 @@ export const Navbar: React.FC = () => {
                           type="button"
                           onClick={async () => {
                             setAccountDropdownOpen(false);
-                            if (activeUser.isReal) {
-                              await logout();
-                            } else {
-                              localStorage.removeItem("brandroom_user");
-                              window.dispatchEvent(new Event("brandroom_user_updated"));
-                              window.location.href = "/";
-                            }
+                            await logout();
                           }}
                           className="flex items-center gap-2.5 w-full px-4 py-2 text-xs font-sans text-red-700 hover:bg-red-50 transition-colors text-left font-medium"
                         >

@@ -34,7 +34,7 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ role = "comp
       const convs = getConversations();
       const unread = convs.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
       setUnreadMsgCount(unread);
-      setUser(getCurrentUser());
+      setUser(getCurrentUser() || DEFAULT_USER);
     };
 
     updateStats();

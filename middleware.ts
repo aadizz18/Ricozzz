@@ -11,15 +11,45 @@ interface PublicUserToken {
   exp: number;
 }
 
-function parseUserSessionCookie(cookieValue: string | undefined): PublicUserToken | null {
+async function verifyUserSessionCookie(cookieValue: string | undefined): Promise<PublicUserToken | null> {
   if (!cookieValue) return null;
   try {
     const parts = cookieValue.split(".");
     if (parts.length !== 2) return null;
+    const [b64, signature] = parts;
+
+    // Cryptographic signature verification using standard Web Crypto API (Edge-compatible)
+    const secret = process.env.INSFORGE_API_KEY || "ricoz-enterprise-auth-secret-key-32ch";
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      enc.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"]
+    );
+
+    const sigB64 = signature.replace(/-/g, "+").replace(/_/g, "/");
+    const sigPad = sigB64 + "=".repeat((4 - (sigB64.length % 4)) % 4);
+    const sigStr = atob(sigPad);
+    const sigBytes = new Uint8Array(sigStr.length);
+    for (let i = 0; i < sigStr.length; i++) {
+      sigBytes[i] = sigStr.charCodeAt(i);
+    }
+
+    const isValid = await crypto.subtle.verify(
+      "HMAC",
+      key,
+      sigBytes,
+      enc.encode(b64)
+    );
+
+    if (!isValid) return null;
 
     // Decode base64url payload
-    const base64 = parts[0].replace(/-/g, "+").replace(/_/g, "/");
-    const json = atob(base64);
+    const payloadB64 = b64.replace(/-/g, "+").replace(/_/g, "/");
+    const payloadPad = payloadB64 + "=".repeat((4 - (payloadB64.length % 4)) % 4);
+    const json = atob(payloadPad);
     const payload = JSON.parse(json) as PublicUserToken;
 
     const now = Math.floor(Date.now() / 1000);
@@ -33,7 +63,7 @@ function parseUserSessionCookie(cookieValue: string | undefined): PublicUserToke
   }
 }
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // -------------------------------------------------------------
@@ -69,17 +99,35 @@ export function middleware(req: NextRequest) {
   }
 
   // -------------------------------------------------------------
-  // 2. PUBLIC WORKSPACE ACCOUNT PROTECTION (/dashboard/*)
+  // 2. PUBLIC WORKSPACE ACCOUNT PROTECTION (/dashboard/*, /api/user/*)
   // -------------------------------------------------------------
+  if (pathname.startsWith("/api/user")) {
+    const userCookie = req.cookies.get(USER_SESSION_COOKIE);
+    const userToken = await verifyUserSessionCookie(userCookie?.value);
+    if (!userToken) {
+      return NextResponse.json(
+        { success: false, error: "Authentication required" },
+        { status: 401 }
+      );
+    }
+    return NextResponse.next();
+  }
+
   if (pathname.startsWith("/dashboard")) {
     const userCookie = req.cookies.get(USER_SESSION_COOKIE);
-    const userToken = parseUserSessionCookie(userCookie?.value);
+    const userToken = await verifyUserSessionCookie(userCookie?.value);
 
-    // If unauthenticated or token is expired, redirect to public login
+    // If unauthenticated or token signature invalid / expired, redirect to public login
     if (!userToken) {
       const loginUrl = new URL("/login", req.url);
       loginUrl.searchParams.set("from", pathname);
       return NextResponse.redirect(loginUrl);
+    }
+
+    // Route root /dashboard to appropriate workspace
+    if (pathname === "/dashboard" || pathname === "/dashboard/") {
+      const destination = userToken.accountType === "talent" ? "/dashboard/designer" : "/dashboard/company";
+      return NextResponse.redirect(new URL(destination, req.url));
     }
 
     // Enforce role segregation between talent and company workspaces
@@ -107,5 +155,6 @@ export const config = {
     "/admin/:path*",
     "/api/admin/:path*",
     "/dashboard/:path*",
+    "/api/user/:path*",
   ],
 };

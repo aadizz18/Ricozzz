@@ -298,17 +298,14 @@ export function startOrGetConversation(designer: Designer): Conversation {
 
 // ----------------- Auth / User -----------------
 
-export function getCurrentUser(): User {
-  if (!isClient()) return DEFAULT_USER;
+export function getCurrentUser(): User | null {
+  if (!isClient()) return null;
   try {
     const raw = localStorage.getItem(KEYS.USER);
-    if (!raw) {
-      localStorage.setItem(KEYS.USER, JSON.stringify(DEFAULT_USER));
-      return DEFAULT_USER;
-    }
+    if (!raw) return null;
     return JSON.parse(raw);
   } catch {
-    return DEFAULT_USER;
+    return null;
   }
 }
 

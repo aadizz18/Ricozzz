@@ -128,20 +128,6 @@ function AdminLoginForm() {
       </div>
 
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md relative z-10">
-        {/* Prominent Demo Mode Notice */}
-        <div className="mb-4 p-3.5 rounded-xl bg-amber-950/40 border border-amber-600/40 flex items-start gap-2.5 text-xs text-amber-200 shadow-lg">
-          <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <div className="font-bold flex items-center gap-1.5 text-amber-300 uppercase tracking-wider font-mono text-[10px]">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-              DEMO MODE — Frontend Prototype
-            </div>
-            <p className="text-[11px] leading-relaxed text-amber-200/90">
-              This admin panel runs entirely in the browser with realistic sample data stored in LocalStorage. No backend or server database is required.
-            </p>
-          </div>
-        </div>
-
         <div className="bg-[#0E1118] py-8 px-6 shadow-2xl rounded-2xl border border-white/10 sm:px-8 space-y-6">
           {error && (
             <div className="p-3 rounded-lg bg-red-950/40 border border-red-800/60 flex items-start gap-2.5 text-xs text-red-300">
@@ -150,18 +136,18 @@ function AdminLoginForm() {
             </div>
           )}
 
-          {/* 1-Click Demo Access Shortcuts */}
+          {/* System Owner Quick Access */}
           <div className="space-y-2">
             <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
               <span className="flex items-center gap-1.5 text-red-400 font-semibold uppercase tracking-wider">
                 <Sparkles className="w-3.5 h-3.5" />
-                Quick 1-Click Demo Access
+                System Owner Quick Access
               </span>
-              <span className="text-[10px] text-slate-500">Select any role</span>
+              <span className="text-[10px] text-slate-500">Verified System Owner</span>
             </div>
 
             <div className="grid grid-cols-1 gap-2">
-              {ADMIN_PRESET_ACCOUNTS.slice(0, 3).map((acc) => (
+              {ADMIN_PRESET_ACCOUNTS.map((acc) => (
                 <button
                   key={acc.email}
                   type="button"

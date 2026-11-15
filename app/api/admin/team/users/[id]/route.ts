@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/admin/db";
-import { requirePermission, revokeAllUserSessions } from "@/lib/admin/auth";
+import { requirePermission, revokeAllUserSessions, hasPermission } from "@/lib/admin/auth";
 import { loadUserDepartmentMemberships, loadUserPermissions } from "@/lib/admin/permissions";
 import { recordAuditLog } from "@/lib/admin/audit";
 
@@ -100,13 +100,36 @@ export async function PATCH(
       }
     }
 
-    // Status change validation (suspension/activation)
+    // Status change validation (suspension/activation/deactivation)
     if (status && status !== targetUser.status) {
       if (targetUser.id === auth.user.id) {
-        return NextResponse.json({ success: false, error: "Self-suspension is strictly prohibited." }, { status: 403 });
+        return NextResponse.json({ success: false, error: "Self-status modification is strictly prohibited." }, { status: 403 });
       }
-      if (status === "suspended") {
-        // Immediately revoke all active sessions for suspended user
+
+      // Check granular permissions for non-super_admin actors
+      if (auth.user.role !== "super_admin") {
+        if (status === "suspended" && !hasPermission(auth.user, "users.suspend")) {
+          return NextResponse.json(
+            { success: false, error: "Access Denied: Permission 'users.suspend' required to suspend administrative accounts." },
+            { status: 403 }
+          );
+        }
+        if (status === "active" && !hasPermission(auth.user, "users.activate")) {
+          return NextResponse.json(
+            { success: false, error: "Access Denied: Permission 'users.activate' required to activate administrative accounts." },
+            { status: 403 }
+          );
+        }
+        if (status === "deactivated" && !hasPermission(auth.user, "users.deactivate")) {
+          return NextResponse.json(
+            { success: false, error: "Access Denied: Permission 'users.deactivate' required to deactivate administrative accounts." },
+            { status: 403 }
+          );
+        }
+      }
+
+      if (status === "suspended" || status === "deactivated") {
+        // Immediately revoke all active sessions for suspended or deactivated user
         await revokeAllUserSessions(id);
       }
     }
