@@ -35,7 +35,7 @@ export default function AdminReportsPage() {
       setData(reportsRes.reports || null);
       setDepartments(deptsRes.departments || []);
     } catch (err) {
-      console.error("Reports error:", err);
+      console.warn("Reports error:", err);
     } finally {
       setLoading(false);
     }

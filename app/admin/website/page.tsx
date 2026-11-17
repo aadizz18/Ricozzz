@@ -69,7 +69,7 @@ export default function AdminWebsitePage() {
       });
       setEnquiries(res.enquiries || []);
     } catch (err: any) {
-      console.error("Fetch enquiries error:", err);
+      console.warn("Fetch enquiries error:", err);
     }
   };
 
@@ -78,7 +78,7 @@ export default function AdminWebsitePage() {
       const res = await adminApi.website.getSections();
       setSections(res.sections || []);
     } catch (err: any) {
-      console.error("Fetch sections error:", err);
+      console.warn("Fetch sections error:", err);
     }
   };
 
@@ -87,7 +87,7 @@ export default function AdminWebsitePage() {
       const res = await adminApi.website.getFaqs();
       setFaqs(res.faqs || []);
     } catch (err: any) {
-      console.error("Fetch FAQs error:", err);
+      console.warn("Fetch FAQs error:", err);
     }
   };
 
@@ -96,7 +96,7 @@ export default function AdminWebsitePage() {
       const res = await adminApi.website.getTestimonials();
       setTestimonials(res.testimonials || []);
     } catch (err: any) {
-      console.error("Fetch testimonials error:", err);
+      console.warn("Fetch testimonials error:", err);
     }
   };
 
@@ -110,7 +110,7 @@ export default function AdminWebsitePage() {
         setHeroDisciplinesCount(s.hero_metrics.value.disciplinesCount || 19);
       }
     } catch (err: any) {
-      console.error("Fetch settings error:", err);
+      console.warn("Fetch settings error:", err);
     }
   };
 

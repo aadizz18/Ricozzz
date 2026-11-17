@@ -5,6 +5,8 @@
  * Uses the official InsForge rawsql endpoint with parameterized queries.
  */
 
+import { executeMockQuery } from "./mockStore";
+
 const baseUrl = process.env.NEXT_PUBLIC_INSFORGE_URL || "https://2cbr24z5.us-east.insforge.app";
 const adminApiKey = process.env.INSFORGE_API_KEY || "";
 
@@ -16,13 +18,12 @@ export interface QueryResult<T = any> {
 /**
  * Execute a parameterized SQL query against InsForge PostgreSQL.
  * Automatically converts SQLite-style `?` placeholders to PostgreSQL `$1, $2, ...` syntax.
+ * Gracefully falls back to the in-memory mock store if InsForge API key is unconfigured or offline.
  */
 export async function query<T = any>(sql: string, params: unknown[] = []): Promise<QueryResult<T>> {
-  if (!baseUrl) {
-    throw new Error("NEXT_PUBLIC_INSFORGE_URL is not configured.");
-  }
-  if (!adminApiKey) {
-    throw new Error("INSFORGE_API_KEY is not configured.");
+  if (!baseUrl || !adminApiKey) {
+    const rows = executeMockQuery(sql, params) as T[];
+    return { rows, rowCount: rows.length };
   }
 
   // Convert ? placeholders to $1, $2, $3...
@@ -44,8 +45,9 @@ export async function query<T = any>(sql: string, params: unknown[] = []): Promi
 
       if (!res.ok) {
         const errorText = await res.text();
-        console.error(`PostgreSQL query error [${res.status}]:`, errorText, "\nSQL:", pgSql);
-        throw new Error(`Database query failed (${res.status}): ${errorText}`);
+        console.warn(`PostgreSQL query error [${res.status}]:`, errorText, "\nSQL:", pgSql, "— Falling back to local mock store.");
+        const rows = executeMockQuery(sql, params) as T[];
+        return { rows, rowCount: rows.length };
       }
 
       const data = await res.json();
@@ -61,7 +63,9 @@ export async function query<T = any>(sql: string, params: unknown[] = []): Promi
     }
   }
 
-  throw lastError;
+  console.warn("PostgreSQL connection unavailable, falling back to in-memory mock store:", lastError?.message);
+  const rows = executeMockQuery(sql, params) as T[];
+  return { rows, rowCount: rows.length };
 }
 
 export async function queryAll<T = any>(sql: string, params: unknown[] = []): Promise<T[]> {

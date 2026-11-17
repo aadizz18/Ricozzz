@@ -59,10 +59,12 @@ export function getDashboardStats(departmentFilter?: string, _range = "30d"): Da
   // Clients KPIs
   const activeClients = clients.filter((c) => c.onboardingStage === "active").length;
   const onboardingClients = clients.filter((c) => c.onboardingStage !== "active" && c.onboardingStage !== "churned").length;
+  const totalClients = Math.max(clients.length, activeClients + onboardingClients);
 
   // Vendors KPIs
   const verifiedVendors = vendors.filter((v) => v.verificationStatus === "verified").length;
   const pendingVendors = vendors.filter((v) => v.verificationStatus !== "verified").length;
+  const totalVendors = Math.max(vendors.length, verifiedVendors + pendingVendors);
 
   // Support KPIs
   const openTickets = tickets.filter((t) => t.status !== "resolved").length;
@@ -78,8 +80,10 @@ export function getDashboardStats(departmentFilter?: string, _range = "30d"): Da
     blockedTasks,
     activeClients,
     onboardingClients,
+    totalClients,
     verifiedVendors,
     pendingVendors,
+    totalVendors,
     openTickets,
     criticalTickets,
     resolvedTicketsRate,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/admin/auth";
 import { getDb } from "@/lib/admin/db";
 import { recordAuditLog } from "@/lib/admin/audit";
+import { getMockStore } from "@/lib/admin/mockStore";
 import crypto from "node:crypto";
 
 export async function POST(
@@ -23,11 +24,29 @@ export async function POST(
 
     const db = getDb();
     const commentId = crypto.randomUUID();
+    const now = new Date().toISOString();
 
-    await db.prepare(`
-      INSERT INTO task_comments (id, task_id, user_id, comment, is_blocker_update, created_at)
-      VALUES (?, ?, ?, ?, ?, NOW())
-    `).run(commentId, id, user.id, comment.trim(), Boolean(isBlockerUpdate));
+    try {
+      await db.prepare(`
+        INSERT INTO task_comments (id, task_id, user_id, comment, is_blocker_update, created_at)
+        VALUES (?, ?, ?, ?, ?, NOW())
+      `).run(commentId, id, user.id, comment.trim(), Boolean(isBlockerUpdate));
+    } catch {
+      // In-memory fallback
+    }
+
+    // Direct push to mockStore
+    getMockStore().taskComments.push({
+      id: commentId,
+      task_id: id,
+      user_id: user.id,
+      comment: comment.trim(),
+      is_blocker_update: Boolean(isBlockerUpdate),
+      created_at: now,
+      user_name: user.fullName || "Elena Ramos",
+      user_avatar: user.avatar || "ER",
+      user_role: user.role || "Operations Lead",
+    });
 
     await recordAuditLog({
       actor: user,

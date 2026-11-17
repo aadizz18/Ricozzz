@@ -26,7 +26,7 @@ export default function AdminNotificationsPage() {
       const res = await adminApi.notifications.list();
       setNotifications(res.notifications || []);
     } catch (err) {
-      console.error("Notifications fetch error:", err);
+      console.warn("Notifications fetch error:", err);
     } finally {
       setLoading(false);
     }
@@ -42,7 +42,7 @@ export default function AdminNotificationsPage() {
       await fetchNotifications();
       window.dispatchEvent(new Event("ricoz_admin_refresh"));
     } catch (err) {
-      console.error("Mark all read error:", err);
+      console.warn("Mark all read error:", err);
     }
   };
 
@@ -52,7 +52,7 @@ export default function AdminNotificationsPage() {
       await fetchNotifications();
       window.dispatchEvent(new Event("ricoz_admin_refresh"));
     } catch (err) {
-      console.error("Mark read error:", err);
+      console.warn("Mark read error:", err);
     }
   };
 
@@ -62,7 +62,7 @@ export default function AdminNotificationsPage() {
       await fetchNotifications();
       window.dispatchEvent(new Event("ricoz_admin_refresh"));
     } catch (err) {
-      console.error("Delete notification error:", err);
+      console.warn("Delete notification error:", err);
     }
   };
 

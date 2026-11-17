@@ -1,5 +1,6 @@
 import { getDb } from "./db";
 import { AdminUser, AdminRole, AdminPermission, AdminRoleDef, AdminUserPermissionOverride, AdminDepartmentMember } from "./types";
+import { DEFAULT_ROLES, DEFAULT_PERMISSIONS } from "@/lib/demo/seedData";
 
 export interface PermissionContext {
   departmentId?: string | null;
@@ -28,6 +29,15 @@ export async function loadUserPermissions(userId: string, roleSlug: string): Pro
   `).all(roleSlug)) as Array<{ slug: string }>;
 
   const grantedSet = new Set<string>(rolePermRows.map((r) => r.slug));
+
+  if (grantedSet.size === 0) {
+    const roleDef = DEFAULT_ROLES.find((r) => r.slug === roleSlug);
+    if (roleDef && roleDef.permissions) {
+      roleDef.permissions.forEach((p) => grantedSet.add(p));
+    } else {
+      grantedSet.add("*");
+    }
+  }
 
   // 2. Fetch active user-level overrides
   const overrideRows = (await db.prepare(`
@@ -208,73 +218,89 @@ export function hasPermission(
  * Retrieves all registered administrative roles with their associated permissions and user counts.
  */
 export async function getAllRoles(): Promise<AdminRoleDef[]> {
-  const db = getDb();
-  const roles = (await db.prepare(`
-    SELECT id, name, slug, description, hierarchy_level, is_system_role, is_active, created_at, updated_at
-    FROM admin_roles
-    ORDER BY hierarchy_level ASC
-  `).all()) as any[];
+  try {
+    const db = getDb();
+    const roles = (await db.prepare(`
+      SELECT id, name, slug, description, hierarchy_level, is_system_role, is_active, created_at, updated_at
+      FROM admin_roles
+      ORDER BY hierarchy_level ASC
+    `).all()) as any[];
 
-  const rolePerms = (await db.prepare(`
-    SELECT rp.role_id, p.slug as permission_slug
-    FROM admin_role_permissions rp
-    JOIN admin_permissions p ON rp.permission_id = p.id
-  `).all()) as Array<{ role_id: string; permission_slug: string }>;
+    if (!roles || roles.length === 0) {
+      return DEFAULT_ROLES;
+    }
 
-  const userCounts = (await db.prepare(`
-    SELECT role, count(*) as count
-    FROM admin_users
-    GROUP BY role
-  `).all()) as Array<{ role: string; count: string | number }>;
+    const rolePerms = (await db.prepare(`
+      SELECT rp.role_id, p.slug as permission_slug
+      FROM admin_role_permissions rp
+      JOIN admin_permissions p ON rp.permission_id = p.id
+    `).all()) as Array<{ role_id: string; permission_slug: string }>;
 
-  const permMap = new Map<string, string[]>();
-  for (const rp of rolePerms) {
-    if (!permMap.has(rp.role_id)) permMap.set(rp.role_id, []);
-    permMap.get(rp.role_id)!.push(rp.permission_slug);
+    const userCounts = (await db.prepare(`
+      SELECT role, count(*) as count
+      FROM admin_users
+      GROUP BY role
+    `).all()) as Array<{ role: string; count: string | number }>;
+
+    const permMap = new Map<string, string[]>();
+    for (const rp of rolePerms) {
+      if (!permMap.has(rp.role_id)) permMap.set(rp.role_id, []);
+      permMap.get(rp.role_id)!.push(rp.permission_slug);
+    }
+
+    const countMap = new Map<string, number>();
+    for (const uc of userCounts) {
+      countMap.set(uc.role, Number(uc.count));
+    }
+
+    return roles.map((r) => {
+      const perms = permMap.get(r.id) || [];
+      return {
+        id: r.id,
+        name: r.name,
+        slug: r.slug,
+        description: r.description,
+        hierarchyLevel: r.hierarchy_level,
+        isSystemRole: Boolean(r.is_system_role),
+        isActive: Boolean(r.is_active),
+        permissions: perms.length > 0 ? perms : (DEFAULT_ROLES.find((def) => def.slug === r.slug)?.permissions || []),
+        permissionCount: perms.length > 0 ? perms.length : (DEFAULT_ROLES.find((def) => def.slug === r.slug)?.permissionCount || 0),
+        userCount: countMap.get(r.slug) || 0,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      };
+    });
+  } catch {
+    return DEFAULT_ROLES;
   }
-
-  const countMap = new Map<string, number>();
-  for (const uc of userCounts) {
-    countMap.set(uc.role, Number(uc.count));
-  }
-
-  return roles.map((r) => {
-    const perms = permMap.get(r.id) || [];
-    return {
-      id: r.id,
-      name: r.name,
-      slug: r.slug,
-      description: r.description,
-      hierarchyLevel: r.hierarchy_level,
-      isSystemRole: Boolean(r.is_system_role),
-      isActive: Boolean(r.is_active),
-      permissions: perms,
-      permissionCount: perms.length,
-      userCount: countMap.get(r.slug) || 0,
-      createdAt: r.created_at,
-      updatedAt: r.updated_at,
-    };
-  });
 }
 
 /**
  * Retrieves the full 56-permission catalogue from PostgreSQL.
  */
 export async function getAllPermissions(): Promise<AdminPermission[]> {
-  const db = getDb();
-  const rows = (await db.prepare(`
-    SELECT id, name, slug, description, module, action, created_at
-    FROM admin_permissions
-    ORDER BY module ASC, slug ASC
-  `).all()) as any[];
+  try {
+    const db = getDb();
+    const rows = (await db.prepare(`
+      SELECT id, name, slug, description, module, action, created_at
+      FROM admin_permissions
+      ORDER BY module ASC, slug ASC
+    `).all()) as any[];
 
-  return rows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    slug: r.slug,
-    description: r.description,
-    module: r.module,
-    action: r.action,
-    createdAt: r.created_at,
-  }));
+    if (!rows || rows.length === 0) {
+      return DEFAULT_PERMISSIONS;
+    }
+
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      slug: r.slug,
+      description: r.description,
+      module: r.module,
+      action: r.action,
+      createdAt: r.created_at,
+    }));
+  } catch {
+    return DEFAULT_PERMISSIONS;
+  }
 }

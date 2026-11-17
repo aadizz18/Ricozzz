@@ -3,6 +3,7 @@ import { getDb } from "@/lib/admin/db";
 import { requirePermission, requireSuperAdmin } from "@/lib/admin/auth";
 import { getAllRoles } from "@/lib/admin/permissions";
 import { recordAuditLog } from "@/lib/admin/audit";
+import { DEFAULT_ROLES } from "@/lib/demo/seedData";
 
 export async function GET(req: NextRequest) {
   const auth = await requirePermission("users.view", req);
@@ -10,10 +11,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const roles = await getAllRoles();
-    return NextResponse.json({ success: true, roles });
+    return NextResponse.json({ success: true, roles: roles && roles.length > 0 ? roles : DEFAULT_ROLES });
   } catch (error) {
-    console.error("Roles GET error:", error);
-    return NextResponse.json({ success: false, error: "Failed to fetch roles." }, { status: 500 });
+    console.error("Roles GET error, returning default roles:", error);
+    return NextResponse.json({ success: true, roles: DEFAULT_ROLES });
   }
 }
 

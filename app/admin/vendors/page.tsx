@@ -60,7 +60,7 @@ export default function AdminVendorsPage() {
         setVendors(res.vendors);
       }
     } catch (err) {
-      console.error("Error fetching live vendors:", err);
+      console.warn("Error fetching live vendors:", err);
     } finally {
       setLoading(false);
     }
@@ -96,7 +96,7 @@ export default function AdminVendorsPage() {
         setDocuments(res.documents || []);
       }
     } catch (err) {
-      console.error("Error loading vendor details:", err);
+      console.warn("Error loading vendor details:", err);
     }
   };
 
@@ -196,7 +196,7 @@ export default function AdminVendorsPage() {
         }
       }
     } catch (err) {
-      console.error("Update stage error:", err);
+      console.warn("Update stage error:", err);
     }
   };
 

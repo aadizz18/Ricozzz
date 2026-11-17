@@ -5,6 +5,13 @@ export interface CsrfCheckResult {
   error?: string;
 }
 
+function hostsMatch(a: string, b: string): boolean {
+  if (a === b) return true;
+  const normA = a.replace(/^127\.0\.0\.1/, "localhost");
+  const normB = b.replace(/^127\.0\.0\.1/, "localhost");
+  return normA === normB;
+}
+
 /**
  * Validates request origin and referer for state-changing HTTP methods (POST, PUT, PATCH, DELETE).
  * Safe read-only methods (GET, HEAD, OPTIONS) bypass this check.
@@ -26,7 +33,7 @@ export function verifyCsrfOrigin(req: NextRequest): CsrfCheckResult {
   if (origin) {
     try {
       const originUrl = new URL(origin);
-      if (originUrl.host !== host) {
+      if (!hostsMatch(originUrl.host, host)) {
         return {
           valid: false,
           error: `Cross-site request forgery blocked: Origin '${originUrl.host}' does not match Host '${host}'`,
@@ -43,7 +50,7 @@ export function verifyCsrfOrigin(req: NextRequest): CsrfCheckResult {
   if (referer) {
     try {
       const refererUrl = new URL(referer);
-      if (refererUrl.host !== host) {
+      if (!hostsMatch(refererUrl.host, host)) {
         return {
           valid: false,
           error: `Cross-site request forgery blocked: Referer '${refererUrl.host}' does not match Host '${host}'`,

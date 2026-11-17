@@ -29,7 +29,7 @@ export default function AdminAuditLogPage() {
       });
       setLogs((res.logs || []) as any);
     } catch (err) {
-      console.error("Audit log error:", err);
+      console.warn("Audit log error:", err);
     } finally {
       setLoading(false);
     }

@@ -55,7 +55,7 @@ export default function AdminDepartmentsPage() {
         setNewDeptId(depts[0].id);
       }
     } catch (err) {
-      console.error("Error loading departments data:", err);
+      console.warn("Error loading departments data:", err);
     } finally {
       setLoading(false);
     }

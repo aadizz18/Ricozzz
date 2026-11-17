@@ -4,6 +4,10 @@ export type AdminRole =
   | "coo"
   | "dept_head"
   | "ops_manager"
+  | "ops_lead"
+  | "finance_director"
+  | "department_lead"
+  | "specialist"
   | "finance_manager"
   | "hr_manager"
   | "sales_manager"
@@ -142,6 +146,77 @@ export interface Department {
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
 export type TaskStatus = "todo" | "in_progress" | "blocked" | "in_review" | "completed";
 
+export type AgentSpecialistRole =
+  | "orchestrator"
+  | "engineer"
+  | "legal"
+  | "creative"
+  | "qa_auditor";
+
+export interface TaskSubStep {
+  id: string;
+  title: string;
+  agentRole: AgentSpecialistRole;
+  agentName: string;
+  agentAvatar: string;
+  status: "pending" | "in_progress" | "completed" | "flagged_manual";
+  reasoning: string;
+  artifactOutput?: string;
+  artifactType?: "code" | "legal" | "design" | "email" | "report";
+  executionDurationMs: number;
+}
+
+export interface TaskAgentResolution {
+  taskId: string;
+  taskTitle: string;
+  outcome: "auto_solved" | "needs_manual_interaction" | "in_progress";
+  confidenceScore: number;
+  summary: string;
+  substeps: TaskSubStep[];
+  humanActionRequired?: string;
+  unblockedTaskId?: string;
+  artifacts: Array<{
+    name: string;
+    type: "code" | "legal" | "design" | "email" | "report";
+    content: string;
+  }>;
+  resolvedAt: string;
+  auditTrailId: string;
+}
+
+export interface MultiAgentBatchReport {
+  batchId: string;
+  timestamp: string;
+  totalTasks: number;
+  autoSolvedCount: number;
+  manualActionCount: number;
+  avgConfidence: number;
+  totalExecutionTimeMs: number;
+  resolutions: TaskAgentResolution[];
+  agentAccuracyMatrix: Record<
+    string,
+    { accuracy: number; tasksSolved: number; tokensProcessed: number; latencyMs: number }
+  >;
+}
+
+export interface AgentTrainingSession {
+  modelName: string;
+  epochs: number;
+  lossHistory: number[];
+  finalLoss: number;
+  accuracy: number;
+  reasoningDepthScore: number;
+  trainedOnSops: string[];
+  evalMetrics: Array<{
+    agent: string;
+    role: AgentSpecialistRole;
+    accuracy: number;
+    latencyMs: number;
+    benchmarkScore: string;
+    status: "optimal" | "ready";
+  }>;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -174,6 +249,14 @@ export interface Task {
   updated_at?: string;
   commentsCount?: number;
   comments_count?: number;
+  autoSolved?: boolean;
+  auto_solved?: boolean;
+  needsManualAction?: boolean;
+  needs_manual_action?: boolean;
+  manualActionNote?: string | null;
+  manual_action_note?: string | null;
+  agentResolution?: TaskAgentResolution;
+  agent_resolution?: TaskAgentResolution;
 }
 
 export interface TaskComment {
@@ -440,11 +523,17 @@ export interface OperationsKPIs {
   blockedTasks: number;
   activeClients: number;
   onboardingClients: number;
+  pausedClients?: number;
+  totalClients: number;
   verifiedVendors: number;
   pendingVendors: number;
+  pausedVendors?: number;
+  totalVendors: number;
   openTickets: number;
   criticalTickets: number;
   resolvedTicketsRate: number;
+  slaCompliancePct?: number;
+  p99ResolutionLatencyMin?: number;
 }
 
 export const ADMIN_PRESET_ACCOUNTS = [
@@ -457,4 +546,231 @@ export const ADMIN_PRESET_ACCOUNTS = [
     avatar: "AA",
     color: "from-red-600 to-red-800",
   },
+  {
+    name: "Aadinath Achary",
+    email: "aadinath@ricoz.io",
+    role: "Super Admin / Owner",
+    department: "Executive Operations",
+    badge: "Full Clearance (Level 1)",
+    avatar: "AA",
+    color: "from-red-600 to-red-800",
+  },
+  {
+    name: "Elena Ramos",
+    email: "elena.r@ricoz.io",
+    role: "Operations Lead",
+    department: "Creative Delivery",
+    badge: "Ops Lead (Level 2)",
+    avatar: "ER",
+    color: "from-amber-600 to-orange-700",
+  },
 ];
+
+// ============================================================================
+// RICOZ OPERATIONS SUITE V3.5 & V4.1 UNIFIED TYPES & SCHEMAS
+// ============================================================================
+
+export type AdminUIMode = "executive" | "tactical";
+
+export type UrgencyColor = "#DC2626" | "#D97706" | "#64748B" | "#7C3AED";
+
+export interface ShapAttribution {
+  feature: string;
+  value: number | string;
+  shapValue: number;
+  impact: "positive" | "negative" | "neutral";
+  description: string;
+}
+
+export interface ShapModelResult {
+  model: "vendor_shadow_score" | "retainer_scope_creep_risk" | "creative_match_quality" | "burnout_sla_breach_risk";
+  modelName: string;
+  baseScore: number;
+  calculatedScore: number;
+  riskLevel?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  attributions: ShapAttribution[];
+  suggestions: string[];
+  solutions: string[];
+  predictionConfidence: number;
+}
+
+export interface UserRBAC {
+  userId: string;
+  name: string;
+  email: string;
+  role: "super_admin" | "ops_lead" | "coordinator" | "viewer" | "admin";
+  department: string;
+  skills: string[];
+  activeCriticalTracks: number;
+  maxCapacityHours: number;
+  capacity_pct?: number;
+  is_active?: boolean;
+}
+
+export interface ClientMandate {
+  clientId: string;
+  companyName: string;
+  primaryContact: {
+    name: string;
+    email: string;
+    phone: string;
+  };
+  stage: "tell_us" | "discover" | "review" | "shortlist" | "project" | "inquiry" | "onboarding" | "active" | "paused";
+  onboardingChecklist: Array<{
+    itemKey: string;
+    label: string;
+    completed: boolean;
+  }>;
+  retainerValue: number;
+  hoursAllocated: number;
+  hoursUsed: number;
+  cycleDay: number;
+  accountLeadId: string;
+  accountLeadName?: string;
+  scopeCreepAlert?: boolean;
+  shapRiskScore?: number;
+  createdAt?: string;
+}
+
+export interface VendorCreative {
+  vendorId: string;
+  studioName: string;
+  discipline: "creative_director" | "brand_identity" | "specialist";
+  verificationStatus: "unverified" | "pending_review" | "verified";
+  shadowScore: number;
+  complianceDocs: Array<{
+    docType: "nda" | "tax_w9" | "insurance_cert" | "msa";
+    fileUrl: string;
+    verified: boolean;
+    expiresAt: string;
+  }>;
+  portfolioVector?: number[];
+  autoRoutingPaused?: boolean;
+  activeDeliverablesCount?: number;
+  pingLatencyHours?: number;
+  revisionLoops30d?: number;
+}
+
+export interface TaskWorkflow {
+  taskId: string;
+  title: string;
+  department: string;
+  priority: "P0" | "P1" | "P2" | "P3";
+  status: "todo" | "in_progress" | "at_risk" | "overdue" | "blocked" | "completed";
+  assigneeId: string;
+  assigneeName?: string;
+  dueDate: string;
+  blockedByTaskId: string | null;
+  sopId: string | null;
+  sopTitle?: string;
+  sopChecklistState: Array<{
+    stepIndex: number;
+    completed: boolean;
+  }>;
+  blockerNote: string | null;
+  comments: Array<{
+    authorId: string;
+    authorName?: string;
+    text: string;
+    timestamp: string;
+  }>;
+  urgencyColor?: UrgencyColor;
+  slaBreachRiskScore?: number;
+  hoursToDeadline?: number;
+}
+
+export interface BriefEnquiry {
+  enquiryId: string;
+  companyName: string;
+  projectTitle: string;
+  creativeDiscipline: string;
+  budgetRange: string | null;
+  timelineWeeks: number | null;
+  briefText: string;
+  completenessScore: number;
+  aiSuggestedTalentIds: string[];
+  status: "pending" | "triaged" | "converted";
+  missingFields?: string[];
+  triageSummary?: string;
+  createdAt?: string;
+}
+
+export interface SupportTicketCSAT {
+  ticketRef: string;
+  category: string;
+  subject: string;
+  customerName: string;
+  priority: "P0" | "P1" | "P2" | "P3";
+  status: "open" | "pending" | "escalated" | "resolved";
+  slaDueAt: string;
+  responses: Array<{
+    sender: string;
+    text: string;
+    timestamp: string;
+  }>;
+  csatScore: number | null;
+  rootCauseTag: string | null;
+  warRoomActive?: boolean;
+}
+
+export interface SOPTemplate {
+  sopId: string;
+  title: string;
+  department: string;
+  version: string;
+  category: string;
+  markdownBody: string;
+  checklistSteps: string[];
+  driftScore: number;
+  lastReviewedAt: string;
+}
+
+export interface AuditEventLedger {
+  eventId: string;
+  entityType: string;
+  entityId: string;
+  action: string;
+  actorId: string;
+  actorName?: string;
+  payload: Record<string, unknown>;
+  timestamp: string;
+}
+
+export interface BriefFunnelEvent {
+  funnelId: string;
+  mandateId: string;
+  stageName: "tell_us" | "discover" | "review" | "shortlist" | "project";
+  conversionTimeSec: number;
+  dropoffFlag: boolean;
+  metadata?: Record<string, unknown>;
+  timestamp: string;
+}
+
+export interface PlaybookExecutionLog {
+  id: string;
+  playbookId: string;
+  playbook_id?: string;
+  playbookName: string;
+  targetId: string;
+  target_id?: string;
+  status: "success" | "warning" | "in_progress" | "failed";
+  triggeredAt: string;
+  summary: string;
+  details: Record<string, unknown>;
+  actionsTaken?: string[];
+  actions_taken?: string[];
+}
+
+export interface MLTrainingMetrics {
+  modelKey: string;
+  modelName: string;
+  epochs: number;
+  trainLoss: number;
+  valLoss: number;
+  r2Score: number;
+  meanAbsoluteError: number;
+  featureImportance: Array<{ feature: string; importance: number }>;
+  lastTrainedAt: string;
+  sampleCount: number;
+  lossHistory?: number[];
+}

@@ -1,10 +1,24 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Menu, Search, Bell, ExternalLink, ShieldCheck, Plus, Check } from "lucide-react";
-import { AdminUser } from "@/lib/admin/types";
+import {
+  Menu,
+  Search,
+  Bell,
+  ExternalLink,
+  ShieldCheck,
+  Globe,
+  Sliders,
+  Eye,
+  Terminal,
+  Activity,
+  Layers,
+} from "lucide-react";
+import { AdminUser, AdminUIMode } from "@/lib/admin/types";
+import { CommandPalette } from "./CommandPalette";
+import { LiveWebsiteOverlay } from "./LiveWebsiteOverlay";
 
 interface AdminHeaderProps {
   user: AdminUser;
@@ -12,6 +26,8 @@ interface AdminHeaderProps {
   title?: string;
   breadcrumbs?: { label: string; href?: string }[];
   unreadNotificationCount?: number;
+  currentMode?: AdminUIMode;
+  onToggleMode?: (mode: AdminUIMode) => void;
 }
 
 export const AdminHeader: React.FC<AdminHeaderProps> = ({
@@ -20,93 +36,166 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
   title,
   breadcrumbs = [],
   unreadNotificationCount = 0,
+  currentMode: externalMode,
+  onToggleMode: externalToggleMode,
 }) => {
   const router = useRouter();
-  const [searchQuery, setSearchQuery] = useState("");
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [liveOverlayOpen, setLiveOverlayOpen] = useState(false);
+  const [internalMode, setInternalMode] = useState<AdminUIMode>("tactical");
+  const [streamTicker, setStreamTicker] = useState(0);
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchQuery.trim()) return;
-    router.push(`/admin/tasks?search=${encodeURIComponent(searchQuery.trim())}`);
+  const activeMode = externalMode || internalMode;
+
+  const handleModeSwitch = (newMode: AdminUIMode) => {
+    setInternalMode(newMode);
+    if (externalToggleMode) {
+      externalToggleMode(newMode);
+    }
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("ricoz_mode_change", { detail: { mode: newMode } }));
+    }
   };
 
+  useEffect(() => {
+    const handleOpen = () => setPaletteOpen(true);
+    window.addEventListener("ricoz_open_palette", handleOpen);
+
+    // Live telemetry pulse ticker (< 3 seconds streaming simulation)
+    const interval = setInterval(() => {
+      setStreamTicker((prev) => (prev + 1) % 100);
+    }, 2800);
+
+    return () => {
+      window.removeEventListener("ricoz_open_palette", handleOpen);
+      clearInterval(interval);
+    };
+  }, []);
+
   return (
-    <header className="h-16 bg-[#0A0D14]/90 backdrop-blur-md border-b border-white/10 sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6">
-      {/* Left: Mobile trigger & Breadcrumbs */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onOpenMobileMenu}
-          className="lg:hidden p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
-          aria-label="Open navigation menu"
-        >
-          <Menu className="w-5 h-5" />
-        </button>
+    <>
+      <header className="h-16 bg-[#0A0D14]/90 backdrop-blur-md border-b border-white/10 sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6">
+        {/* Left: Mobile trigger & Breadcrumbs */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onOpenMobileMenu}
+            className="lg:hidden p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+            aria-label="Open navigation menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
 
-        <div className="flex flex-col">
-          {breadcrumbs.length > 0 && (
-            <nav className="flex items-center gap-1.5 text-[10px] font-mono text-slate-500 uppercase tracking-wider">
-              {breadcrumbs.map((b, i) => (
-                <React.Fragment key={b.label}>
-                  {i > 0 && <span>/</span>}
-                  {b.href ? (
-                    <Link href={b.href} className="hover:text-slate-300 transition-colors">
-                      {b.label}
-                    </Link>
-                  ) : (
-                    <span className="text-slate-400">{b.label}</span>
-                  )}
-                </React.Fragment>
-              ))}
-            </nav>
-          )}
-          <h1 className="text-base sm:text-lg font-bold text-white tracking-tight leading-none mt-0.5">
-            {title || "Operations Control"}
-          </h1>
+          <div className="flex flex-col">
+            {breadcrumbs.length > 0 && (
+              <nav className="flex items-center gap-1.5 text-[10px] font-mono text-slate-500 uppercase tracking-wider">
+                {breadcrumbs.map((b, i) => (
+                  <React.Fragment key={b.label}>
+                    {i > 0 && <span>/</span>}
+                    {b.href ? (
+                      <Link href={b.href} className="hover:text-slate-300 transition-colors">
+                        {b.label}
+                      </Link>
+                    ) : (
+                      <span className="text-slate-400">{b.label}</span>
+                    )}
+                  </React.Fragment>
+                ))}
+              </nav>
+            )}
+            <div className="flex items-center gap-2 mt-0.5">
+              <h1 className="text-base sm:text-lg font-bold text-white tracking-tight leading-none">
+                {title || "Operations Control"}
+              </h1>
+
+              {/* Real-time Telemetry Streaming Pill */}
+              <span className="hidden xl:inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                <span>STREAM 2.8s</span>
+              </span>
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* Right: Quick Search, Notifications, Quick Actions, Public Platform link */}
-      <div className="flex items-center gap-3 sm:gap-4">
-        {/* Global Quick Search Form */}
-        <form onSubmit={handleSearchSubmit} className="hidden md:block relative">
-          <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search tasks, clients, tickets..."
-            className="w-48 lg:w-64 pl-8 pr-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-red-500 font-mono transition-all focus:w-72"
-          />
-        </form>
+        {/* Right: Mode Toggle, Command Palette, Live Site Preview, Notifications */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Executive vs Tactical Mode Switcher (FR-03) */}
+          <div className="flex items-center bg-white/[0.04] border border-white/10 rounded-xl p-0.5 font-mono text-[11px]">
+            <button
+              onClick={() => handleModeSwitch("executive")}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition-colors ${
+                activeMode === "executive"
+                  ? "bg-purple-600 text-white font-bold shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+              title="Executive Mode: Abstract parameters, focus on KPIs, margin charts, and strategic alerts"
+            >
+              <Eye className="w-3 h-3" />
+              <span className="hidden sm:inline">Executive</span>
+            </button>
+            <button
+              onClick={() => handleModeSwitch("tactical")}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition-colors ${
+                activeMode === "tactical"
+                  ? "bg-red-600 text-white font-bold shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+              title="Tactical Mode: Dense tables, raw event logs, and micro-action triggers"
+            >
+              <Sliders className="w-3 h-3" />
+              <span className="hidden sm:inline">Tactical</span>
+            </button>
+          </div>
 
-        {/* In-app Notification Icon */}
-        <Link
-          href="/admin/notifications"
-          className="relative p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
-          title="Notifications"
-        >
-          <Bell className="w-4 h-4" />
-          {unreadNotificationCount > 0 && (
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 ring-2 ring-[#0A0D14]" />
-          )}
-        </Link>
+          {/* Global Cmd+K Command Palette Trigger (FR-03) */}
+          <button
+            onClick={() => setPaletteOpen(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-xs text-slate-300 font-mono transition-colors group"
+            title="Launch Command Palette (Cmd+K / Ctrl+K)"
+          >
+            <Terminal className="w-3.5 h-3.5 text-red-500 group-hover:text-red-400" />
+            <span className="hidden md:inline text-slate-400">Commands...</span>
+            <kbd className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-slate-400 font-bold">
+              ⌘K
+            </kbd>
+          </button>
 
-        {/* InsForge Live Backend Status Pill */}
-        <span className="hidden md:inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-mono font-medium">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          INSFORGE LIVE
-        </span>
+          {/* Live Website Preview & Funnel Overlay Switcher (FR-04) */}
+          <button
+            onClick={() => setLiveOverlayOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-mono text-emerald-400 hover:text-emerald-300 bg-emerald-950/40 hover:bg-emerald-950/70 border border-emerald-800/40 transition-colors shadow-sm"
+            title="Toggle Live Website Preview & Funnel Overlay Switcher"
+          >
+            <Globe className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Live Site Overlay</span>
+          </button>
 
-        {/* Public platform return link */}
-        <Link
-          href="/"
-          target="_blank"
-          className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono text-slate-400 hover:text-white bg-white/[0.03] hover:bg-white/[0.06] border border-white/5 transition-colors"
-        >
-          <span>Live Site</span>
-          <ExternalLink className="w-3 h-3 text-slate-500" />
-        </Link>
-      </div>
-    </header>
+          {/* Notifications */}
+          <Link
+            href="/admin/notifications"
+            className="relative p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-colors border border-transparent hover:border-white/10"
+            title="Notifications"
+          >
+            <Bell className="w-4 h-4" />
+            {unreadNotificationCount > 0 && (
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 ring-2 ring-[#0A0D14]" />
+            )}
+          </Link>
+        </div>
+      </header>
+
+      {/* Global Command Palette Modal */}
+      <CommandPalette
+        isOpen={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onToggleMode={handleModeSwitch}
+        currentMode={activeMode}
+      />
+
+      {/* Live Website Overlay Modal */}
+      <LiveWebsiteOverlay
+        isOpen={liveOverlayOpen}
+        onClose={() => setLiveOverlayOpen(false)}
+      />
+    </>
   );
 };

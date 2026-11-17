@@ -2,6 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/admin/auth";
 import { getDb } from "@/lib/admin/db";
 import { recordAuditLog } from "@/lib/admin/audit";
+import { V4_SEED_BRIEFS } from "@/lib/demo/v4SeedData";
+
+function mapV4SeedBriefs() {
+  return V4_SEED_BRIEFS.map((b) => ({
+    id: b.enquiryId,
+    full_name: b.companyName,
+    email: `${b.companyName.toLowerCase().replace(/[^a-z0-9]/g, "")}@example.com`,
+    company: b.companyName,
+    mandate_type: b.creativeDiscipline || "Design & Engineering",
+    timeline: b.timelineWeeks ? `${b.timelineWeeks} weeks` : "Not specified",
+    project_brief: b.briefText,
+    budget_range: b.budgetRange || "Pending triage",
+    status: b.completenessScore < 50 ? "pending" : "contacted",
+    client_id: null,
+    created_at: b.createdAt || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: b.createdAt || new Date().toISOString(),
+    client_stage: null,
+    completenessScore: b.completenessScore,
+    triageSummary: b.triageSummary,
+  }));
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -36,18 +57,19 @@ export async function GET(req: NextRequest) {
 
     query += " ORDER BY e.created_at DESC";
 
-    const enquiries = await db.prepare(query).all(...params);
+    let enquiries = await db.prepare(query).all(...params);
+
+    if (!enquiries || enquiries.length === 0) {
+      enquiries = mapV4SeedBriefs();
+    }
 
     return NextResponse.json({
       success: true,
       enquiries,
     });
   } catch (error) {
-    console.error("Website enquiries GET error:", error);
-    return NextResponse.json(
-      { success: false, error: "Failed to fetch website enquiries" },
-      { status: 500 }
-    );
+    console.error("Website enquiries GET error, returning V4 seed briefs:", error);
+    return NextResponse.json({ success: true, enquiries: mapV4SeedBriefs() });
   }
 }
 

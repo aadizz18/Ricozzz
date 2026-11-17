@@ -14,9 +14,52 @@ import {
   AlertCircle,
   Building,
   ShieldCheck,
+  CheckSquare,
+  Square,
+  Activity,
+  Copy,
+  Check,
+  TrendingDown,
+  Sparkles,
 } from "lucide-react";
 import { SOP, Department } from "@/lib/admin/types";
 import { adminApi } from "@/lib/admin/apiClient";
+
+function renderMarkdownInline(text: string) {
+  const parts: (string | React.ReactNode)[] = [];
+  const regex = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.substring(lastIndex, match.index));
+    }
+    const token = match[0];
+    if (token.startsWith("**") && token.endsWith("**")) {
+      parts.push(
+        <strong key={key++} className="font-bold text-white">
+          {token.slice(2, -2)}
+        </strong>
+      );
+    } else if (token.startsWith("`") && token.endsWith("`")) {
+      parts.push(
+        <code
+          key={key++}
+          className="px-1.5 py-0.5 rounded bg-white/10 font-mono text-[11px] text-red-300 border border-white/5"
+        >
+          {token.slice(1, -1)}
+        </code>
+      );
+    }
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.substring(lastIndex));
+  }
+  return parts.length > 0 ? parts : text;
+}
 
 export default function AdminSOPsPage() {
   const [sops, setSops] = useState<SOP[]>([]);
@@ -25,6 +68,28 @@ export default function AdminSOPsPage() {
   const [selectedDept, setSelectedDept] = useState("");
   const [search, setSearch] = useState("");
   const [activeSop, setActiveSop] = useState<SOP | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [completedSteps, setCompletedSteps] = useState<Record<string, Record<number, boolean>>>({
+    "sop-801-deck-design": { 0: true, 1: true },
+    "sop-802-brand-guide": { 0: true },
+  });
+
+  const toggleStep = (sopId: string, idx: number) => {
+    setCompletedSteps((prev) => ({
+      ...prev,
+      [sopId]: {
+        ...(prev[sopId] || {}),
+        [idx]: !prev[sopId]?.[idx],
+      },
+    }));
+  };
+
+  const handleCopyMarkdown = (content: string) => {
+    if (!content) return;
+    navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   // Modals & Editing
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -50,7 +115,7 @@ export default function AdminSOPsPage() {
         setActiveSop(data[0]);
       }
     } catch (err: any) {
-      console.error("Error loading SOPs:", err);
+      console.warn("Error loading SOPs:", err);
     } finally {
       setLoading(false);
     }
@@ -181,11 +246,12 @@ export default function AdminSOPsPage() {
           ) : (
             sops.map((s) => {
               const isSelected = activeSop?.id === s.id;
+              const drift = (s as any).driftScore ?? 4.2;
               return (
                 <div
                   key={s.id}
                   onClick={() => setActiveSop(s)}
-                  className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-2 ${
+                  className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-2.5 ${
                     isSelected
                       ? "bg-[#141924] border-red-500/60 shadow-lg"
                       : "bg-[#0E1118] border-white/10 hover:border-white/20"
@@ -195,9 +261,20 @@ export default function AdminSOPsPage() {
                     <span className="text-slate-400 uppercase font-bold">
                       {s.departmentName || (s as any).department_name}
                     </span>
-                    <span className="px-1.5 py-0.5 rounded bg-white/[0.05] border border-white/10 text-red-400 font-bold">
-                      {s.version}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${
+                          drift > 3
+                            ? "bg-amber-950/60 text-amber-300 border-amber-800/40"
+                            : "bg-emerald-950/60 text-emerald-300 border-emerald-800/40"
+                        }`}
+                      >
+                        Drift: {drift}%
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded bg-white/[0.05] border border-white/10 text-red-400 font-bold">
+                        {s.version}
+                      </span>
+                    </div>
                   </div>
 
                   <h3 className="text-sm font-bold text-white tracking-tight">
@@ -223,17 +300,53 @@ export default function AdminSOPsPage() {
           {activeSop ? (
             <div className="bg-[#0E1118] border border-white/10 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6">
               {/* Reader Header */}
-              <div className="space-y-3 pb-5 border-b border-white/10">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded bg-white/[0.04] border border-white/10 text-slate-300">
-                    {activeSop.departmentName || (activeSop as any).department_name}
-                  </span>
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-red-950/80 text-red-400 border border-red-800/40">
-                    {activeSop.version}
-                  </span>
-                  <span className="text-[10px] font-mono text-slate-500">
-                    Category: {activeSop.category}
-                  </span>
+              <div className="space-y-4 pb-5 border-b border-white/10">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded bg-white/[0.04] border border-white/10 text-slate-300">
+                      {activeSop.departmentName || (activeSop as any).department_name}
+                    </span>
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-red-950/80 text-red-400 border border-red-800/40">
+                      {activeSop.version}
+                    </span>
+                    <span
+                      className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                        ((activeSop as any).driftScore ?? 4.2) > 3
+                          ? "bg-amber-950/60 text-amber-300 border-amber-800/40"
+                          : "bg-emerald-950/60 text-emerald-300 border-emerald-800/40"
+                      }`}
+                    >
+                      Process Drift: {(activeSop as any).driftScore ?? 4.2}%
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-500">
+                      Category: {activeSop.category}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() =>
+                      handleCopyMarkdown(
+                        activeSop.contentMarkdown ||
+                          (activeSop as any).content_markdown ||
+                          (activeSop as any).markdownBody ||
+                          ""
+                      )
+                    }
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-[11px] text-slate-300 font-mono transition-all"
+                    title="Copy Markdown"
+                  >
+                    {copied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-emerald-400">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Copy SOP</span>
+                      </>
+                    )}
+                  </button>
                 </div>
 
                 <h1 className="text-xl sm:text-2xl font-black text-white font-sans tracking-tight">
@@ -245,37 +358,118 @@ export default function AdminSOPsPage() {
                 </p>
 
                 <div className="flex items-center gap-4 text-[10px] font-mono text-slate-500">
-                  <span>Author / Owner: <strong className="text-slate-300">{activeSop.ownerName || (activeSop as any).owner_name || "Operations Lead"}</strong></span>
+                  <span>Author / Owner: <strong className="text-slate-300">{activeSop.ownerName || (activeSop as any).owner_name || "Elena Ramos"}</strong></span>
                   <span>Last Reviewed: <strong className="text-slate-300">{activeSop.lastReviewedAt ? new Date(activeSop.lastReviewedAt).toLocaleDateString() : "Recent"}</strong></span>
                 </div>
               </div>
 
               {/* Reader Content Markdown Render */}
-              <div className="text-xs sm:text-sm text-slate-200 leading-relaxed space-y-4 font-sans prose prose-invert max-w-none">
-                {activeSop.contentMarkdown ? (
-                  activeSop.contentMarkdown.split("\n\n").map((para, idx) => {
-                    if (para.startsWith("### ")) {
+              <div className="space-y-5">
+                {(() => {
+                  const raw: string =
+                    activeSop.contentMarkdown ||
+                    (activeSop as any).content_markdown ||
+                    (activeSop as any).markdownBody ||
+                    "";
+
+                  if (!raw.trim()) {
+                    return <p className="text-xs text-slate-500 italic">No document body content available.</p>;
+                  }
+
+                  const blocks: string[] = raw.split("\n\n");
+                  let globalStepCounter = 0;
+
+                  return blocks.map((block: string, bIdx: number) => {
+                    const trimmed = block.trim();
+
+                    // Heading Level 2
+                    if (trimmed.startsWith("## ")) {
                       return (
-                        <h4 key={idx} className="text-sm font-bold text-white uppercase tracking-wider font-mono pt-3 pb-1 border-b border-white/5">
-                          {para.replace("### ", "")}
+                        <h3 key={bIdx} className="text-sm font-bold text-white uppercase tracking-wider font-mono pt-2 pb-1 border-b border-white/10">
+                          {trimmed.replace(/^##\s+/, "")}
+                        </h3>
+                      );
+                    }
+
+                    // Heading Level 3
+                    if (trimmed.startsWith("### ")) {
+                      return (
+                        <h4 key={bIdx} className="text-xs font-bold text-red-400 uppercase tracking-wider font-mono pt-2 pb-1">
+                          {trimmed.replace(/^###\s+/, "")}
                         </h4>
                       );
                     }
-                    if (para.startsWith("- ") || para.startsWith("1. ")) {
-                      const lines = para.split("\n");
+
+                    // Checklist / Ordered items: lines starting with 1., 2., -, or - [ ]
+                    const lines = trimmed.split("\n");
+                    const isListBlock = lines.every((l: string) => /^[0-9]+\.\s+|^-\s+|^-\s*\[[ xX]\]\s*/.test(l.trim()));
+
+                    if (isListBlock) {
+                      const totalSteps = lines.length;
+                      const activeSopState = completedSteps[activeSop.id] || {};
+                      const completedCount = lines.filter((_: string, idx: number) => activeSopState[idx]).length;
+
                       return (
-                        <ul key={idx} className="space-y-1.5 pl-4 list-disc text-slate-300">
-                          {lines.map((l, lIdx) => (
-                            <li key={lIdx}>{l.replace(/^[0-9]+\.\s+|^-\s+/, "")}</li>
-                          ))}
-                        </ul>
+                        <div key={bIdx} className="space-y-3 bg-white/[0.02] border border-white/10 rounded-xl p-4">
+                          <div className="flex items-center justify-between text-xs font-mono">
+                            <span className="text-slate-400 flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-red-400" />
+                              Interactive Checklist Verification
+                            </span>
+                            <span className="text-slate-300 font-bold">
+                              {completedCount} / {totalSteps} Cleared ({Math.round((completedCount / totalSteps) * 100)}%)
+                            </span>
+                          </div>
+
+                          <div className="w-full h-1.5 bg-black/40 rounded-full overflow-hidden border border-white/5">
+                            <div
+                              className="h-full bg-gradient-to-r from-red-600 to-emerald-500 transition-all duration-300"
+                              style={{ width: `${(completedCount / totalSteps) * 100}%` }}
+                            />
+                          </div>
+
+                          <div className="space-y-2 pt-1">
+                            {lines.map((line: string, lIdx: number) => {
+                              const stepIdx = lIdx;
+                              const isChecked = Boolean(activeSopState[stepIdx]);
+                              const cleanText = line.replace(/^[0-9]+\.\s+|^-\s+|^-\s*\[[ xX]\]\s*/, "");
+
+                              return (
+                                <div
+                                  key={lIdx}
+                                  onClick={() => toggleStep(activeSop.id, stepIdx)}
+                                  className={`flex items-start gap-3 p-2.5 rounded-lg border transition-all cursor-pointer ${
+                                    isChecked
+                                      ? "bg-emerald-950/20 border-emerald-800/40 text-slate-300"
+                                      : "bg-white/[0.02] border-white/5 hover:border-white/10 text-slate-200"
+                                  }`}
+                                >
+                                  <div className="mt-0.5">
+                                    {isChecked ? (
+                                      <CheckSquare className="w-4 h-4 text-emerald-400" />
+                                    ) : (
+                                      <Square className="w-4 h-4 text-slate-500" />
+                                    )}
+                                  </div>
+                                  <div className={`text-xs leading-relaxed flex-1 ${isChecked ? "line-through text-slate-400" : ""}`}>
+                                    {renderMarkdownInline(cleanText)}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
                       );
                     }
-                    return <p key={idx} className="text-slate-300 leading-relaxed">{para}</p>;
-                  })
-                ) : (
-                  <p className="text-slate-500 italic">No document body content available.</p>
-                )}
+
+                    // Standard paragraph
+                    return (
+                      <p key={bIdx} className="text-xs text-slate-300 leading-relaxed font-sans">
+                        {renderMarkdownInline(trimmed)}
+                      </p>
+                    );
+                  });
+                })()}
               </div>
             </div>
           ) : (

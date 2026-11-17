@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/admin/auth";
 import { getDb } from "@/lib/admin/db";
 import { recordAuditLog } from "@/lib/admin/audit";
+import { getMockStore } from "@/lib/admin/mockStore";
 
 export async function GET(
   req: NextRequest,
@@ -14,7 +15,7 @@ export async function GET(
     const { id } = await params;
     const db = getDb();
 
-    const sop = await db.prepare(`
+    let sop = await db.prepare(`
       SELECT 
         s.id, s.title, s.slug, s.department_id, s.category, s.summary,
         s.content_markdown, s.version, s.status, s.owner_id, s.last_reviewed_at,
@@ -28,12 +29,21 @@ export async function GET(
     `).get(id, id);
 
     if (!sop) {
+      sop = getMockStore().sops.find((s) => s.id === id || s.slug === id);
+    }
+
+    if (!sop) {
       return NextResponse.json({ success: false, error: "SOP not found" }, { status: 404 });
     }
 
     return NextResponse.json({ success: true, sop });
   } catch (error) {
     console.error("SOP GET error:", error);
+    const { id } = await params;
+    const sop = getMockStore().sops.find((s) => s.id === id || s.slug === id);
+    if (sop) {
+      return NextResponse.json({ success: true, sop });
+    }
     return NextResponse.json({ success: false, error: "Failed to fetch SOP" }, { status: 500 });
   }
 }

@@ -567,4 +567,33 @@ export const adminApi = {
       });
     },
   },
+
+  // 15. Autonomous Multi-Agent AI Suite
+  ai: {
+    async solveTasks(options: { taskId?: string; mode?: "single" | "all" } = {}) {
+      return request<{
+        success: boolean;
+        mode: string;
+        report: any;
+        resolution: any;
+        message: string;
+      }>("/api/ai/solve-tasks", {
+        method: "POST",
+        body: JSON.stringify(options),
+      });
+    },
+    async trainAgents(options: { epochs?: number; benchmarkDataset?: string } = {}) {
+      return request<{
+        success: boolean;
+        session: any;
+        message: string;
+      }>("/api/ai/train-agents", {
+        method: "POST",
+        body: JSON.stringify(options),
+      });
+    },
+    getReportDownloadUrl(format: "markdown" | "html" = "markdown") {
+      return `/api/ai/download-report?format=${format}`;
+    },
+  },
 };

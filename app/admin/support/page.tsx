@@ -73,7 +73,7 @@ export default function AdminSupportPage() {
         }
       }
     } catch (err) {
-      console.error("Error fetching live support tickets:", err);
+      console.warn("Error fetching live support tickets:", err);
     } finally {
       setLoading(false);
     }
@@ -114,7 +114,7 @@ export default function AdminSupportPage() {
         setResponses(res.responses || []);
       }
     } catch (err) {
-      console.error("Error loading ticket detail:", err);
+      console.warn("Error loading ticket detail:", err);
     }
   };
 
@@ -171,7 +171,7 @@ export default function AdminSupportPage() {
         }
       }
     } catch (err) {
-      console.error("Status update error:", err);
+      console.warn("Status update error:", err);
     }
   };
 
@@ -188,7 +188,7 @@ export default function AdminSupportPage() {
         await fetchTickets();
       }
     } catch (err) {
-      console.error("Post response error:", err);
+      console.warn("Post response error:", err);
     } finally {
       setSaving(false);
     }

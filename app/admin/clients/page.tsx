@@ -61,7 +61,7 @@ export default function AdminClientsPage() {
         setClients(res.clients);
       }
     } catch (err) {
-      console.error("Error fetching live clients:", err);
+      console.warn("Error fetching live clients:", err);
     } finally {
       setLoading(false);
     }
@@ -97,7 +97,7 @@ export default function AdminClientsPage() {
         setChecklist((res.checklist || []) as any);
       }
     } catch (err) {
-      console.error("Error fetching client details:", err);
+      console.warn("Error fetching client details:", err);
     }
   };
 
@@ -161,7 +161,7 @@ export default function AdminClientsPage() {
         await fetchClients();
       }
     } catch (err) {
-      console.error("Toggle checklist error:", err);
+      console.warn("Toggle checklist error:", err);
     }
   };
 
@@ -178,7 +178,7 @@ export default function AdminClientsPage() {
         }
       }
     } catch (err) {
-      console.error("Stage update error:", err);
+      console.warn("Stage update error:", err);
     }
   };
 

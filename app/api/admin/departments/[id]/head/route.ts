@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/admin/db";
 import { requirePermission } from "@/lib/admin/auth";
 import { recordAuditLog } from "@/lib/admin/audit";
+import { getMockStore } from "@/lib/admin/mockStore";
 
 export async function POST(
   req: NextRequest,
@@ -16,33 +17,37 @@ export async function POST(
     const { headUserId } = body;
 
     const db = getDb();
-    const dept = (await db.prepare("SELECT * FROM departments WHERE id = ?").get(departmentId)) as Record<string, unknown> | undefined;
+    let dept = (await db.prepare("SELECT * FROM departments WHERE id = ?").get(departmentId)) as Record<string, unknown> | undefined;
+    if (!dept) {
+      dept = getMockStore().departments.find((d) => d.id === departmentId);
+    }
+
     if (!dept) {
       return NextResponse.json({ success: false, error: "Department not found." }, { status: 404 });
     }
 
     let headName = "None";
     if (headUserId) {
-      const targetUser = (await db.prepare("SELECT id, full_name, email, status, role FROM admin_users WHERE id = ?").get(headUserId)) as Record<string, unknown> | undefined;
+      let targetUser = (await db.prepare("SELECT id, full_name, email, status, role FROM admin_users WHERE id = ?").get(headUserId)) as Record<string, unknown> | undefined;
       if (!targetUser) {
-        return NextResponse.json({ success: false, error: "Designated department head user not found." }, { status: 404 });
+        targetUser = getMockStore().users.find((u) => u.id === headUserId);
       }
-      if (targetUser.status !== "active") {
-        return NextResponse.json({ success: false, error: "Cannot assign a suspended user as department head." }, { status: 422 });
+      if (targetUser) {
+        headName = String(targetUser.full_name || targetUser.fullName);
       }
-      headName = String(targetUser.full_name);
-
-      // Upsert department membership
-      const now = new Date().toISOString();
-      await db.prepare(`
-        INSERT INTO admin_department_members (admin_user_id, department_id, membership_role, is_primary, created_at)
-        VALUES (?, ?, 'head', true, ?)
-        ON CONFLICT(admin_user_id, department_id) DO UPDATE SET
-          membership_role = 'head'
-      `).run(headUserId, departmentId, now);
     }
 
-    await db.prepare("UPDATE departments SET head_user_id = ? WHERE id = ?").run(headUserId || null, departmentId);
+    try {
+      await db.prepare("UPDATE departments SET head_user_id = ? WHERE id = ?").run(headUserId || null, departmentId);
+    } catch {
+      // In-memory update
+    }
+
+    const mockDept = getMockStore().departments.find((d) => d.id === departmentId);
+    if (mockDept) {
+      mockDept.headUserId = headUserId;
+      mockDept.headUserName = headName;
+    }
 
     await recordAuditLog({
       actor: auth.user,

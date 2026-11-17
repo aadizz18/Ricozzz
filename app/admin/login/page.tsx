@@ -61,7 +61,7 @@ function AdminLoginForm() {
 
       setError((res as any).error || "Authentication failed. Please verify your administrative credentials.");
     } catch (err: any) {
-      console.error("Login error:", err);
+      console.warn("Login error:", err);
       setError(err.message || "An unexpected error occurred. Please verify your connection.");
     } finally {
       setLoading(false);
@@ -97,7 +97,7 @@ function AdminLoginForm() {
 
       setError((res as any).error || "Failed to log in with selected account.");
     } catch (err: any) {
-      console.error("Quick access error:", err);
+      console.warn("Quick access error:", err);
       setError(err.message || "Authentication error.");
     } finally {
       setLoading(false);
